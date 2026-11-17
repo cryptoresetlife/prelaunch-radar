@@ -1,0 +1,42 @@
+<!doctype html>
+<!--
+  Prelaunch Radar. A map of this source for whoever reads it:
+  - model.js          the value model and the farm planner. main.ts runs it on the sealed snapshot to write
+                      board.json; this page runs the same file again in the browser. Functions: splitUniverse
+                      (trading / set aside / still to come), fitPeers (the peer curve), scoreProtocol (implied
+                      value, band, confidence), farmPlan (steps, each with a cost and a time), buildRadar.
+  - radar.js          the page: renderBoard (sort, search, filters), renderDetail (value walk, peer chart,
+                      comparables, farm plan), readHash / writeHash (every view is a link).
+  - snapshot-data.js  the snapshot's ten fields for all protocols, written by main.ts. No value is stored:
+                      the page derives every figure, then checks its total against board.json (the header chip).
+  No protocol is named anywhere in the code. No network: no remote script, font or image.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prelaunch Radar: protocols with no token on record, ranked by implied launch value</title>
+<link rel="stylesheet" href="radar.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="14"/><circle cx="16" cy="16" r="8"/><path d="M16 16 L27 7"/><circle class="blip" cx="22" cy="11" r="2.4"/></svg>
+    <div><h1>Prelaunch Radar</h1><p id="tagline">Protocols that record no token, ranked by what a launch would be worth.</p></div>
+  </div>
+  <div class="meta" id="meta"></div>
+</header>
+<main>
+  <section class="funnel" id="funnel" aria-label="How the snapshot splits"></section>
+  <section class="modelbar" id="modelbar" aria-label="The value model"></section>
+  <section class="controls" id="controls" aria-label="Filters"></section>
+  <section class="tablewrap"><table id="board"><thead></thead><tbody></tbody></table><p class="empty" id="empty" hidden>No protocol matches these filters. <button type="button" data-act="reset">Clear filters</button></p></section>
+  <footer class="foot">Implied value is this model's estimate from one DefiLlama snapshot, not a price and not advice. A protocol here <em>records</em> no token; it may still have one its record does not carry. Nothing predicts whether or when a token is issued.</footer>
+</main>
+<div class="scrim" id="scrim" hidden></div>
+<aside class="detail" id="detail" role="dialog" aria-modal="true" aria-labelledby="d-name" hidden></aside>
+<script src="snapshot-data.js"></script>
+<script src="model.js"></script>
+<script src="radar.js"></script>
+</body>
+</html>
