@@ -18,10 +18,12 @@ interface Protocol {
 interface Snapshot { as_of: string; source: string; floor_usd: number; protocols: Protocol[]; watchlist: string[] }
 interface BoardRow { slug: string; name: string; rank: number; implied_value_usd: number; farm_steps: string[] }
 interface Model {
-  buildRadar(s: Snapshot): { rows: unknown[]; trading: unknown[]; aside: unknown[]; fit: { a: number; b: number; sigma: number; n: number } };
+  buildRadar(s: Snapshot): {
+    rows: unknown[]; trading: unknown[]; aside: unknown[];
+    fit: { a: number; b: number; sigma: number; n: number; coef: Record<string, { prior: number; fit: number; se: number; post: number }> };
+    test: { n: number; miss: number; q25: number; q75: number; within3: number; split: { train: number; test: number; cut: string; miss: number } };
+  };
   boardRows(radar: unknown): BoardRow[];
-  packSnapshot(s: Snapshot): unknown;
-  unpackSnapshot(d: unknown): Snapshot;
 }
 const model = (globalThis as unknown as { RadarModel: Model }).RadarModel;
 
@@ -87,29 +89,20 @@ const rows = model.boardRows(radar);
 const issue = boardIssue(rows, snapshot);
 if (issue !== null) fail(`the model wrote a board the gate refuses: ${issue}`);
 
-// The page's copy of the snapshot. It must give the page the same board, so prove it before writing.
-const packed = model.packSnapshot(snapshot);
-const replay = model.boardRows(model.buildRadar(model.unpackSnapshot(JSON.parse(JSON.stringify(packed)))));
-if (JSON.stringify(replay) !== JSON.stringify(rows)) fail('the page\'s copy of the snapshot does not reproduce board.json');
-
+// The page's copy of the snapshot: the same objects, untouched, so the page's run of the model is this run.
+// board_check is what board.json holds; the page compares its own totals against it and says so in its header.
 const check = { rows: rows.length, value_sum_usd: rows.reduce((sum, r) => sum + r.implied_value_usd, 0), top: rows[0]!.slug };
-const p = packed as { protocols: unknown[]; categories: string[]; chains: string[]; watchlist: string[] } & Record<string, unknown>;
-const head = { as_of: p.as_of, source: p.source, floor_usd: p.floor_usd, fields: p.fields, board_check: check };
-// The short parts first and the long index tables last: a reader of the file's head sees real rows.
+const head = { as_of: snapshot.as_of, source: snapshot.source, floor_usd: snapshot.floor_usd, board_check: check };
 const dataJs =
-  '// Written by main.ts from /input/snapshot.json: the snapshot\'s ten fields for every protocol, nothing derived.\n' +
-  '// model.js (unpackSnapshot, buildRadar) turns it into the board in the browser; board_check is what board.json\n' +
-  '// holds, and the page shows whether its own run matches. One protocol a line, categories and chains as indexes\n' +
-  '// into the two tables at the end of the file:\n' +
-  '// [slug, name, category#, [chain#], tvl_usd, change_7d, mcap_usd, listed_at, gecko_id, symbol]\n' +
+  '// Written by main.ts from /input/snapshot.json: the snapshot\'s own protocol objects, ten fields each, nothing\n' +
+  '// derived and nothing ranked. model.js (buildRadar) turns them into the board in the browser; board_check is\n' +
+  '// what board.json holds, and the page shows whether its own run matches. One protocol a line.\n' +
   `window.RADAR_DATA = ${JSON.stringify(head)};\n` +
-  `window.RADAR_DATA.watchlist = ${JSON.stringify(p.watchlist)};\n` +
-  'window.RADAR_DATA.protocols = [\n' + p.protocols.map((r) => JSON.stringify(r)).join(',\n') + '\n];\n' +
-  `window.RADAR_DATA.categories = ${JSON.stringify(p.categories)};\n` +
-  `window.RADAR_DATA.chains = ${JSON.stringify(p.chains)};\n`;
+  `window.RADAR_DATA.watchlist = ${JSON.stringify(snapshot.watchlist)};\n` +
+  'window.RADAR_DATA.protocols = [\n' + snapshot.protocols.map((r) => JSON.stringify(r)).join(',\n') + '\n];\n';
 
 mkdirSync(out, { recursive: true });
-writeFileSync(join(out, 'board.json'), `${JSON.stringify({ model: 'prelaunch-radar/1', as_of: snapshot.as_of, fit: { intercept: radar.fit.a, slope: radar.fit.b, sigma: radar.fit.sigma, peers: radar.fit.n }, rows })}\n`);
+writeFileSync(join(out, 'board.json'), `${JSON.stringify({ model: 'prelaunch-radar/1', as_of: snapshot.as_of, fit: { intercept: radar.fit.a, slope: radar.fit.b, sigma: radar.fit.sigma, token_families: radar.fit.n, coefficients: radar.fit.coef }, blind_test: { leave_one_out_median_miss_x: radar.test.miss, band_log10: [radar.test.q25, radar.test.q75], within_3x: radar.test.within3, time_split: radar.test.split }, rows })}\n`);
 copyFiles(join(here, 'dashboard'), join(out, 'dashboard'));
 writeFileSync(join(out, 'dashboard', 'snapshot-data.js'), dataJs);
 const shots = copyFiles(join(here, 'screenshots'), join(out, 'screenshots'));

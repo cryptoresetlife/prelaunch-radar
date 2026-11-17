@@ -13,5 +13,5 @@ shoot() { # name, hash, height
 }
 mkdir -p screenshots
 shoot 1-board.png ""
-shoot 2-detail.png "#p=${DETAIL:-hyperithm}" 1084
+shoot 2-detail.png "#p=${DETAIL:-hyperithm}" 1130
 shoot 3-filtered.png "#cls=early&verdict=Farm&sort=perK&dir=desc"

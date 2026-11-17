@@ -6,7 +6,9 @@
   var $ = function (id) { return document.getElementById(id); };
   if (!M || !D) { $('funnel').innerHTML = '<p class="empty">No data beside the page. Run <code>node main.ts</code>: it writes snapshot-data.js next to index.html.</p>'; return; }
 
-  var radar = M.buildRadar(M.unpackSnapshot(D)), rows = radar.rows, usd = M.usd;
+  var radar = M.buildRadar(D), rows = radar.rows, usd = M.usd, T = radar.test;
+  var peerKeys = {}; radar.fit.peers.forEach(function (f) { peerKeys[f.key] = f; });
+  function fam(p) { return peerKeys[String(p.symbol || p.gecko_id).toUpperCase()]; }
   var bySlug = {}; rows.forEach(function (r) { bySlug[r.slug] = r; });
   var DEFAULTS = { view: 'ranked', cls: '', q: '', cat: '', chain: '', verdict: '', grade: '', min: '', sort: 'rank', dir: 'asc', share: '7', p: '' };
   var S = {}, shown = [];
@@ -21,9 +23,9 @@
   var CLASS = { watch: 'Watchlist', offlist: 'Off-list', early: 'Early' };
   var CLASS_NOTE = { watch: 'on the snapshot\'s watchlist: at or over the floor, no token on record', offlist: 'at or over the floor but left off the watchlist', early: 'under the $' + radar.floor / 1e6 + 'M floor: the early ones' };
   /** The reader's airdrop-share setting rescales the drop, the edge and the verdict; value and rank never move. */
-  function farm(r) {
-    var k = Number(S.share) / (M.AIRDROP_SHARE * 100), edge = r.plan.edge * k;
-    return { perK: r.perK * k, drop: r.plan.drop * k, edge: edge, verdict: M.verdictOf(edge) };
+  function farm(r, plan) {
+    var k = Number(S.share) / (M.AIRDROP_SHARE * 100), pl = plan || r.plan, edge = pl.edge * k;
+    return { perK: r.perK * k, drop: pl.drop * k, low: pl.low * k, net: pl.drop * k - pl.cost, edge: edge, verdict: M.verdictOf(edge, pl.lowEdge * k) };
   }
 
   // ---------------------------------------------------------------- the link is the state
@@ -50,10 +52,10 @@
       { k: 'tvl', t: 'TVL', num: 1, v: function (r) { return r.tvl; }, h: function (r) { return usd(r.tvl); } },
       { k: 'change7d', t: '7d TVL', num: 1, v: function (r) { return r.change7d; }, h: function (r) { return pct(r.change7d); } },
       { k: 'days', t: 'No token for', num: 1, v: function (r) { return r.days; }, h: function (r) { return tenure(r.days); } },
-      { k: 'value', t: 'Implied value', tip: 'What the launch would be worth: the peer curve at its TVL, times category, growth, tenure, breadth and haircut. The bar is the 50% band on a log scale.', v: function (r) { return r.value; }, h: function (r) { return '<b>' + usd(r.value) + '</b><span class="band"><i style="left:' + scale(r.lo).toFixed(1) + '%;width:' + (scale(r.hi) - scale(r.lo)).toFixed(1) + '%"></i><u style="left:' + scale(r.value).toFixed(1) + '%"></u></span><small>' + usd(r.lo) + ' to ' + usd(r.hi) + '</small>'; } },
+      { k: 'value', t: 'Implied value', tip: 'What the launch would be worth: the peer curve at its TVL, times category, growth, tenure, breadth and haircut. The bar is the band the blind test earned, on a log scale.', v: function (r) { return r.value; }, h: function (r) { return '<b>' + usd(r.value) + '</b><span class="band"><i style="left:' + scale(r.lo).toFixed(1) + '%;width:' + (scale(r.hi) - scale(r.lo)).toFixed(1) + '%"></i><u style="left:' + scale(r.value).toFixed(1) + '%"></u></span><small>' + usd(r.lo) + ' to ' + usd(r.hi) + '</small>'; } },
       { k: 'multiple', t: '× TVL', num: 1, v: function (r) { return r.multiple; }, h: function (r) { return times(r.multiple); } },
       { k: 'perK', t: 'Drop per $1k', num: 1, tip: 'Implied value × the airdrop share, split pro rata over TVL, for $1,000 deposited.', v: function (r) { return r.perK; }, h: function (r) { return usd(farm(r).perK); } },
-      { k: 'edge', t: 'Farm plan', tip: 'Verdict = modelled drop ÷ the plan\'s whole cost: Farm at 3× or more, Marginal from 1×, Skip under it.', v: function (r) { return r.plan.edge; }, h: function (r) { var f = farm(r); return '<span class="verdict ' + f.verdict + '">' + f.verdict + ' ' + times(f.edge) + '</span><small>' + r.plan.steps.length + ' steps · ' + usd(r.plan.cost) + ' · ' + r.plan.hours.toFixed(1) + ' h · ' + esc(r.plan.chain) + '</small>'; } },
+      { k: 'edge', t: 'Farm plan', tip: 'Modelled drop ÷ the plan\'s whole cost. Farm: 3× or more and still covered at the band\'s low end. Marginal: covered. Skip: not.', v: function (r) { return r.plan.edge; }, h: function (r) { var f = farm(r); return '<span class="verdict ' + f.verdict + '">' + f.verdict + ' ' + times(f.edge) + '</span> <span class="net">net ' + usd(f.net) + '</span><small>' + r.plan.steps.length + ' steps · ' + usd(r.plan.cost) + ' cost · ' + r.plan.hours.toFixed(1) + ' h · ' + esc(r.plan.chain) + '</small>'; } },
       { k: 'conf', t: 'Conf.', tip: 'How much of the estimate rests on data: same-category peers, a growth figure, a listing date, tenure.', v: function (r) { return r.conf; }, h: function (r) { return '<span class="grade ' + r.grade + '">' + r.grade + '</span>'; } }
     ],
     trading: [
@@ -62,7 +64,7 @@
       { k: 'change7d', t: '7d TVL', num: 1, v: function (p) { return p.change_7d; }, h: function (p) { return pct(p.change_7d); } },
       { k: 'mcap', t: 'Market cap', num: 1, v: function (p) { return p.mcap_usd; }, h: function (p) { return p.mcap_usd ? usd(p.mcap_usd) : '<span class="na">none on record</span>'; } },
       { k: 'multiple', t: 'Mcap ÷ TVL', num: 1, v: function (p) { return p.mcap_usd ? p.mcap_usd / p.tvl_usd : null; }, h: function (p) { return p.mcap_usd ? times(p.mcap_usd / p.tvl_usd) : ''; } },
-      { k: 'use', t: 'Role in the model', v: function (p) { return p.mcap_usd ? 0 : 1; }, h: function (p) { return p.mcap_usd ? 'A peer: one point of the fitted curve' : 'Token on record, no market cap: not fitted'; } }
+      { k: 'use', t: 'Role in the model (tokenFamilies)', v: function (p) { return fam(p) ? 0 : 1; }, h: function (p) { var f = fam(p); return f ? 'Peer: the ' + esc(f.key) + ' family, ' + f.members + ' product' + (f.members > 1 ? 's' : '') + ', ' + usd(f.tvl) + ' TVL' : '<span class="na">No market cap on record: not fitted</span>'; } }
     ],
     aside: [
       { k: 'name', t: 'Protocol', v: function (a) { return a.p.name.toLowerCase(); }, h: function (a) { return '<b>' + esc(a.p.name) + '</b><small>' + esc(a.p.category || 'Uncategorised') + ' · ' + chainsShort(a.p.chains, 2) + '</small>'; } },
@@ -103,15 +105,15 @@
     var n = function (cls) { return rows.filter(function (r) { return r.cls === cls; }).length; };
     var cell = function (view, cls, num, label, note) { return '<button type="button" class="stat" data-view="' + view + '" data-cls="' + cls + '"><b>' + num + '</b><span>' + label + '</span><small>' + note + '</small></button>'; };
     $('funnel').innerHTML = '<div class="stat fixed"><b>' + radar.total + '</b><span>protocols in the snapshot</span><small>every one at or over $5M TVL</small></div><i class="arrow">→</i>' +
-      cell('trading', '', radar.trading.length, 'token already trades', radar.fit.n + ' with a market cap: the peers') +
+      cell('trading', '', radar.trading.length, 'token already trades', radar.fit.n + ' tickers with a market cap: the peers') +
       cell('aside', '', radar.aside.length, 'set aside', 'wrapped, staked, bridged or exchange products') +
       cell('ranked', '', rows.length, 'still to come: ranked', 'no token on record, a launch of its own') + '<i class="arrow">=</i>' +
       cell('ranked', 'watch', n('watch') + ' / ' + radar.watchlist.length, 'watchlist covered', CLASS_NOTE.watch) +
       cell('ranked', 'early', n('early'), 'early', CLASS_NOTE.early) +
       cell('ranked', 'offlist', n('offlist'), 'off-list', 'over the floor, parent on record: haircut');
-    var f = radar.fit, band = Math.pow(10, 0.6745 * f.sigma);
-    $('modelbar').innerHTML = '<div class="formula"><span class="lbl">Value model</span><code>implied value = 10^(' + f.a.toFixed(2) + ' + ' + f.b.toFixed(3) + ' · log10 TVL) × category × 7d growth × no-token tenure × chain breadth × haircut</code>' +
-      '<small>The curve is fitted (Theil-Sen) on the ' + f.n + ' protocols in this snapshot whose token trades with a market cap; half of them sit within ÷' + band.toFixed(1) + ' to ×' + band.toFixed(1) + ' of it, and that is each row\'s band. No list of names: change the snapshot and the board changes.</small></div>' +
+    var f = radar.fit, sign = function (v) { return (v < 0 ? ' − ' : ' + ') + Math.abs(v).toFixed(3); };
+    $('modelbar').innerHTML = '<div class="formula"><span class="lbl">Value model · fitted on this snapshot, then tested blind</span><code>log10 value = ' + f.a.toFixed(2) + ' + ' + f.b.toFixed(3) + '·log10 TVL + category' + sign(f.coef.g.post) + '·growth' + sign(f.coef.s.post) + '·tenure' + sign(f.coef.c.post) + '·log2 chains + haircut</code>' +
+      '<small>Fitted on the ' + f.n + ' tokens that trade with a market cap, one point per ticker (fitOn). <b>Blind test</b> (backtest): each token priced by a fit that never saw it misses by ×' + T.miss.toFixed(1) + ' at the median; a fit on the ' + T.split.train + ' listed before ' + T.split.cut + ' prices the ' + T.split.test + ' listed after within ×' + T.split.miss.toFixed(1) + '. Each row\'s band is the middle half of those misses: ÷' + Math.pow(10, -T.q25).toFixed(1) + ' to ×' + Math.pow(10, T.q75).toFixed(1) + '. No list of names anywhere.</small></div>' +
       '<label class="share"><span class="lbl">Airdrop share of launch value</span><input type="range" id="share" min="2" max="15" step="1" value="' + esc(S.share) + '"><output>' + esc(S.share) + '%</output><small>Sets drop per $1k and the verdict. Rank does not move.</small></label>';
   }
 
@@ -151,13 +153,14 @@
     }).join('');
     $('empty').hidden = shown.length > 0;
     var total = (S.view === 'ranked' ? rows : radar[S.view]).length, col = cols.filter(function (c) { return c.k === S.sort; })[0] || cols[0];
-    $('count').innerHTML = '<b>' + shown.length + '</b> of ' + total + (S.view === 'ranked' ? ' ranked protocols' : S.view === 'trading' ? ' protocols whose token trades' : ' set-aside products') + ' · sorted by ' + col.t + (S.dir === 'asc' ? ' ▲' : ' ▼') + (S.view === 'ranked' ? ' · select a row for its value walk and farm plan' : '');
+    var active = [CLASS[S.cls], S.cat, S.chain, S.verdict && 'verdict ' + S.verdict, S.grade && 'confidence ' + S.grade, S.min && 'TVL ≥ ' + usd(Number(S.min)), S.q && '“' + esc(S.q) + '”'].filter(Boolean);
+    $('count').innerHTML = (active.length ? '<span class="filtered">Filtered: ' + active.map(esc).join(' + ') + '</span> ' : '') + '<b>' + shown.length + '</b> of ' + total + (S.view === 'ranked' ? ' ranked protocols' : S.view === 'trading' ? ' protocols whose token trades' : ' set-aside products') + ' · sorted by ' + col.t + (S.dir === 'asc' ? ' ▲' : ' ▼') + (S.view === 'ranked' ? ' · select a row for its value walk and farm plan' : '');
   }
 
   // ---------------------------------------------------------------- the detail view
   /** The traded protocols nearest in TVL, same category first: the comparables a reader can check by hand. */
   function nearestComps(r, n) {
-    var d = function (p) { return Math.abs(Math.log(p.tvl_usd / r.tvl)); };
+    var d = function (p) { return Math.abs(Math.log(p.tvl / r.tvl)); };
     var kind = M.archetypeOf(r.category).key, tier = function (p) { return p.category === r.category ? 0 : M.archetypeOf(p.category).key === kind ? 1 : 2; };
     return radar.fit.peers.slice().sort(function (a, b) { return tier(a) - tier(b) || d(a) - d(b); }).slice(0, n);
   }
@@ -169,7 +172,7 @@
     [5, 6, 7, 8, 9, 10].forEach(function (e) { s += '<line class="grid" x1="' + L + '" x2="' + (W - 8) + '" y1="' + Y(Math.pow(10, e)) + '" y2="' + Y(Math.pow(10, e)) + '"/><text class="ax" x="' + (L - 6) + '" y="' + (Y(Math.pow(10, e)) + 4) + '" text-anchor="end">' + round$(e) + '</text>'; });
     [7, 8, 9, 10].forEach(function (e) { s += '<text class="ax" x="' + X(Math.pow(10, e)) + '" y="' + (H - 8) + '" text-anchor="middle">' + round$(e) + ' TVL</text>'; });
     s += '<text class="ax" x="' + (L + 6) + '" y="16">market cap</text>';
-    f.peers.forEach(function (p) { s += '<circle class="' + (p.category === r.category ? 'peer same' : 'peer') + '" cx="' + X(p.tvl_usd).toFixed(1) + '" cy="' + Y(Math.min(Math.max(p.mcap_usd, 4e4), 2e11)).toFixed(1) + '" r="' + (p.category === r.category ? 4 : 2.5) + '"/>'; });
+    f.peers.forEach(function (p) { s += '<circle class="' + (p.category === r.category ? 'peer same' : 'peer') + '" cx="' + X(p.tvl).toFixed(1) + '" cy="' + Y(Math.min(Math.max(p.mcap, 4e4), 3e10)).toFixed(1) + '" r="' + (p.category === r.category ? 4 : 2.5) + '"/>'; });
     var c = function (e) { return Math.pow(10, f.a + f.b * e); };
     s += '<line class="fit" x1="' + X(Math.pow(10, x0)) + '" y1="' + Y(c(x0)) + '" x2="' + X(Math.pow(10, x1)) + '" y2="' + Y(c(x1)) + '"/>';
     s += '<line class="whisk" x1="' + X(r.tvl) + '" x2="' + X(r.tvl) + '" y1="' + Y(r.lo) + '" y2="' + Y(r.hi) + '"/><circle class="me" cx="' + X(r.tvl) + '" cy="' + Y(r.value) + '" r="6"/>';
@@ -182,26 +185,27 @@
     var f = farm(r), pl = r.plan, cat = radar.fit.offsets[r.category];
     var step = function (label, input, factor, running) { var w = Math.min(50, Math.abs(Math.log(factor)) / Math.log(2.5) * 50); return '<tr><th>' + label + '</th><td>' + input + '</td><td class="num">' + (factor === null ? '' : times(factor)) + '</td><td class="bar">' + (factor === null ? '' : '<i class="' + (factor >= 1 ? 'up' : 'down') + '" style="width:' + w.toFixed(1) + '%;' + (factor >= 1 ? 'left:50%' : 'right:50%') + '"></i>') + '</td><td class="num">' + usd(running) + '</td></tr>'; };
     var run = r.curve, walk = step('Peer curve', usd(r.tvl) + ' of TVL on the fitted curve', null, run);
-    [['Category', esc(r.category) + ': ' + (cat ? cat.n + ' traded peer' + (cat.n > 1 ? 's' : '') + ', median shrunk by n/(n+3)' : 'no traded peer, so the curve alone'), r.catMult],
-      ['7d growth', r.change7d == null ? 'not reported: neutral' : 'TVL ' + (r.change7d >= 0 ? '+' : '−') + Math.abs(r.change7d).toFixed(1) + '% in seven days', r.growth],
-      ['No-token tenure', r.days == null ? 'no listing date: 0.85 default' : r.days + ' days tracked with no token (since ' + r.listed + ')', r.tenure],
-      ['Chain breadth', r.chains.length + ' chain' + (r.chains.length > 1 ? 's' : ''), r.breadth],
+    var co = radar.fit.coef, beta = function (k) { return ' <span class="na">· slope ' + co[k].post.toFixed(3) + ' (prior ' + co[k].prior + ', peers ' + co[k].fit.toFixed(2) + '±' + co[k].se.toFixed(2) + ')</span>'; };
+    [['Category', esc(r.category) + ': ' + (cat ? cat.n + ' traded peer' + (cat.n > 1 ? 's' : '') + ', median residual shrunk by n/(n+3)' : 'no traded peer, so the curve alone'), r.catMult],
+      ['7d growth', (r.change7d == null ? 'not reported: neutral' : 'TVL ' + (r.change7d >= 0 ? '+' : '−') + Math.abs(r.change7d).toFixed(1) + '%, against the peers\' average') + beta('g'), r.growth],
+      ['No-token tenure', (r.days == null ? 'no listing date: neutral' : r.days + ' days tracked with no token') + beta('s'), r.tenure],
+      ['Chain breadth', r.chains.length + ' chain' + (r.chains.length > 1 ? 's' : '') + beta('c'), r.breadth],
       ['Haircut', r.haircut < 1 ? (r.cls === 'offlist' ? 'parent protocol on record' : 'shares a name with a traded token') : 'none: no traded relative found', r.haircut]
     ].forEach(function (s) { run *= s[2]; walk += step(s[0], s[1], s[2], run); });
-    var comps = nearestComps(r, 5).map(function (p) { return '<tr><td><b>' + esc(p.name) + '</b> <span class="na">' + esc(p.symbol || '') + '</span></td><td>' + esc(p.category || '') + '</td><td class="num">' + usd(p.tvl_usd) + '</td><td class="num">' + usd(p.mcap_usd) + '</td><td class="num">' + times(p.mcap_usd / p.tvl_usd) + '</td></tr>'; }).join('');
+    var comps = nearestComps(r, 5).map(function (p) { return '<tr><td><b>' + esc(p.name) + '</b> <span class="na">' + esc(p.key) + '</span></td><td>' + esc(p.category || '') + '</td><td class="num">' + usd(p.tvl) + '</td><td class="num">' + usd(p.mcap) + '</td><td class="num">' + times(p.mcap / p.tvl) + '</td></tr>'; }).join('');
     var at = shown.indexOf(r);
     el.innerHTML = '<header><div><p class="eyebrow">Rank ' + r.rank + ' of ' + rows.length + ' · <span class="tag ' + r.cls + '">' + CLASS[r.cls] + '</span> ' + CLASS_NOTE[r.cls] + '</p><h2 id="d-name">' + esc(r.name) + '</h2><p class="sub">' + esc(r.category) + ' on ' + chainsShort(r.chains, 6) + ' · TVL ' + usd(r.tvl) + ' · records no token</p></div>' +
       '<nav><button type="button" data-step="-1"' + (at > 0 ? '' : ' disabled') + '>← Prev</button><button type="button" data-step="1"' + (at >= 0 && at < shown.length - 1 ? '' : ' disabled') + '>Next →</button><button type="button" class="close" data-act="close">Close ✕</button></nav></header>' +
-      '<div class="cols"><section><h3>Implied value</h3><div class="hero"><b>' + usd(r.value) + '</b><span>50% band ' + usd(r.lo) + ' to ' + usd(r.hi) + ' · ' + times(r.multiple) + ' TVL · confidence <span class="grade ' + r.grade + '">' + r.grade + '</span> ' + r.conf + '/100</span></div>' +
+      '<div class="cols"><section><h3>Implied value</h3><div class="hero"><b>' + usd(r.value) + '</b><span>blind-test band ' + usd(r.lo) + ' to ' + usd(r.hi) + ' · ' + times(r.multiple) + ' TVL · confidence <span class="grade ' + r.grade + '">' + r.grade + '</span> ' + r.conf + '/100</span></div>' +
       '<table class="walk"><thead><tr><th>Step</th><th>From the snapshot</th><th class="num">Factor</th><th></th><th class="num">Running</th></tr></thead><tbody>' + walk + '</tbody></table>' +
       '<h3>Where it sits among the ' + radar.fit.n + ' traded peers</h3>' + drawScatter(r) + '<p class="legend"><i class="k me"></i>' + esc(r.name) + ' with its band <i class="k same"></i>' + esc(r.category) + ' peers <i class="k peer"></i>other peers <i class="k fit"></i>fitted curve</p>' +
       '<h3>Nearest comparables that trade</h3><table class="comps"><thead><tr><th>Protocol</th><th>Category</th><th class="num">TVL</th><th class="num">Market cap</th><th class="num">Mcap ÷ TVL</th></tr></thead><tbody>' + comps + '</tbody></table></section>' +
       '<section><h3>Farm plan <span class="verdict ' + f.verdict + '">' + f.verdict + ' ' + times(f.edge) + '</span></h3>' +
-      '<div class="tiles"><div><b>' + usd(pl.size) + '</b><span>capital, on ' + esc(pl.chain) + '</span></div><div><b>' + usd(pl.cost) + '</b><span>whole cost: ' + usd(pl.gas) + ' gas' + (pl.carry ? ' + ' + usd(pl.carry) + ' idle cash' : ', deposit keeps earning') + '</span></div><div><b>' + pl.hours.toFixed(1) + ' h</b><span>over ' + pl.weeks + ' weeks</span></div><div><b>' + usd(f.drop) + '</b><span>modelled drop at ' + esc(S.share) + '% share</span></div></div>' +
-      '<p class="why">' + (f.verdict === 'Farm' ? 'The modelled drop is ' + times(f.edge) + ' the plan\'s cost: worth the ' + pl.hours.toFixed(1) + ' hours.' : f.verdict === 'Marginal' ? 'The modelled drop covers the cost ' + times(f.edge) + ': farm it only if the launch is likely or you would use it anyway.' : 'The modelled drop does not cover the cost (' + times(f.edge) + '): its TVL dilutes a ' + usd(pl.size) + ' position. Skip unless you already use it.') + '</p>' +
-      '<ol class="steps">' + pl.steps.map(function (s) { return '<li><p>' + esc(s.what) + '.</p><span class="cost">' + (s.cost > 0 ? usd(s.cost) : 'free') + '</span><span class="time">' + (s.min >= 60 ? (s.min / 60).toFixed(0) + ' h' : s.min + ' min') + '</span><small>' + esc(s.note) + '</small></li>'; }).join('') + '</ol>' +
-      '<h3>The same plan at three sizes</h3><table class="comps"><thead><tr><th class="num">Capital</th><th class="num">Whole cost</th><th class="num">Modelled drop</th><th class="num">Drop ÷ cost</th><th>Verdict</th></tr></thead><tbody>' +
-      [pl.size / 2, pl.size, pl.size * 5].map(function (c) { var q = M.farmPlan(r, c), e = q.edge * Number(S.share) / (M.AIRDROP_SHARE * 100); return '<tr><td class="num">' + (c === pl.size ? 'the plan: ' : '') + usd(c) + '</td><td class="num">' + usd(q.cost) + '</td><td class="num">' + usd(q.cost * e) + '</td><td class="num">' + times(e) + '</td><td><span class="verdict ' + M.verdictOf(e) + '">' + M.verdictOf(e) + '</span></td></tr>'; }).join('') + '</tbody></table>' +
+      '<div class="tiles"><div><b>' + usd(pl.size) + '</b><span>capital, on ' + esc(pl.chain) + '</span></div><div><b>' + usd(pl.cost) + '</b><span>whole cost: ' + usd(pl.gas) + ' gas' + (pl.carry ? ' + ' + usd(pl.carry) + ' idle cash' : ', deposit keeps earning') + '</span></div><div><b>' + pl.hours.toFixed(1) + ' h</b><span>over ' + pl.weeks + ' weeks</span></div><div><b>' + usd(f.drop) + '</b><span>modelled drop at ' + esc(S.share) + '% share; ' + usd(f.low) + ' at the band\'s low end</span></div><div class="' + (f.net >= 0 ? 'gain' : 'loss') + '"><b>' + usd(f.net) + '</b><span>net of cost</span></div></div>' +
+      '<p class="why">' + (f.verdict === 'Farm' ? 'The modelled drop is ' + times(f.edge) + ' the plan\'s cost and still covers it at the band\'s low end: worth the ' + pl.hours.toFixed(1) + ' hours.' : f.verdict === 'Marginal' ? 'The modelled drop covers the cost ' + times(f.edge) + ': farm it only if the launch is likely or you would use it anyway.' : 'The modelled drop does not cover the cost (' + times(f.edge) + '): its TVL dilutes a ' + usd(pl.size) + ' position. Skip unless you already use it.') + '</p>' +
+      '<ol class="steps">' + pl.steps.map(function (s) { return '<li><p><b>' + esc(s.when) + '</b> ' + esc(s.what) + '.</p><span class="cost">' + (s.cost > 0 ? usd(s.cost) : 'free') + '</span><span class="time">' + (s.min >= 60 ? (s.min / 60).toFixed(0) + ' h' : s.min + ' min') + '</span><small>' + esc(s.note) + '</small></li>'; }).join('') + '</ol>' +
+      '<h3>The same plan at three sizes</h3><table class="comps"><thead><tr><th class="num">Capital</th><th class="num">Whole cost</th><th class="num">Modelled drop</th><th class="num">Net</th><th>Verdict</th></tr></thead><tbody>' +
+      [pl.size / 2, pl.size, pl.size * 5].map(function (c) { var q = M.farmPlan(r, c), g = farm(r, q); return '<tr><td class="num">' + (c === pl.size ? 'the plan: ' : '') + usd(c) + '</td><td class="num">' + usd(q.cost) + '</td><td class="num">' + usd(g.drop) + '</td><td class="num">' + usd(g.net) + '</td><td><span class="verdict ' + g.verdict + '">' + g.verdict + ' ' + times(g.edge) + '</span></td></tr>'; }).join('') + '</tbody></table>' +
       '<h3>What the snapshot flags</h3><ul class="flags">' + (r.flags.length ? r.flags.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') : '<li class="none">Nothing: growing or flat, seasoned, multi-chain, no traded relative.</li>') + '</ul></section></div>';
     el.querySelector('.close').focus();
   }
