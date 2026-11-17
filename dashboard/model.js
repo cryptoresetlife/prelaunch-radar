@@ -18,6 +18,7 @@
 
   /** Why a token-less record is a product of something that already trades, or null when it is not. */
   function productReason(p) {
+    if (p.category === 'CEX') return 'an exchange: its TVL is customer deposits, not a protocol awaiting a launch';
     if (PRODUCT_CATEGORIES.includes(p.category)) return p.category + ' product: it wraps an asset that already trades';
     if (VERSION_MARK.test(p.name)) return 'a later version of a protocol on record';
     if (PRODUCT_WORD.test(p.name)) return 'a wrapped or staked product by name';

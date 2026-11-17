@@ -18,7 +18,7 @@
   function pct(v) { if (v != null && Math.abs(v) < 0.05) v = 0; return v == null ? '<span class="na">n/a</span>' : '<span class="' + (v >= 0 ? 'pos' : 'neg') + '">' + (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + '%</span>'; }
   function round$(e) { return '$' + [1, 10, 100][e % 3] + ['', 'K', 'M', 'B'][Math.floor(e / 3)]; }
   function tenure(d) { return d == null ? '<span class="na">n/a</span>' : d < 365 ? d + ' d' : (d / 365).toFixed(1) + ' y'; }
-  function times(v) { return (v >= 10 ? v.toFixed(0) : v >= 1 ? v.toFixed(1) : v.toFixed(2)) + '×'; }
+  function times(v) { return (v >= 10 ? v.toFixed(0) : v >= 1 ? v.toFixed(1) : v >= 0.01 ? v.toFixed(2) : v.toFixed(3)) + '×'; }
   function chainsShort(c, n) { return esc(c.slice(0, n).join(', ')) + (c.length > n ? ' +' + (c.length - n) : ''); }
   var CLASS = { watch: 'Watchlist', offlist: 'Off-list', early: 'Early' };
   var CLASS_NOTE = { watch: 'on the snapshot\'s watchlist: at or over the floor, no token on record', offlist: 'at or over the floor but left off the watchlist', early: 'under the $' + radar.floor / 1e6 + 'M floor: the early ones' };
