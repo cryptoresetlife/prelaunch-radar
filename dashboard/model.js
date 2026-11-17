@@ -2,11 +2,11 @@
  * ONE file, run twice: main.ts runs it on the sealed snapshot to write board.json, and the page runs it
  * again in the browser on the same rows (snapshot-data.js). Nothing here names a protocol: every figure
  * comes from the snapshot's ten fields. Reading order: splitUniverse -> tokenFamilies -> fitOn ->
- * backtest -> scoreProtocol -> farmPlan -> buildRadar. */
+ * backtest -> rankRanges -> scoreProtocol -> farmPlan -> buildRadar. */
 (function (root) {
   'use strict';
 
-  // ---------------------------------------------------------------- 1. who still has a token to come
+  // ----1. who still has a token to come
   const PRODUCT_CATEGORIES = ['Bridge', 'Canonical Bridge', 'Liquid Staking', 'Liquid Restaking', 'Restaked BTC', 'CEX'];
   const VERSION_MARK = /\s(V\d+(\.\d+)?|v\d+(\.\d+)?|\d+\.\d+)$/;
   const PRODUCT_WORD = /\b(wrapped|staked|staking)\b/i;
@@ -42,7 +42,7 @@
     return { watch, trading, aside, candidates, kin };
   }
 
-  // ---------------------------------------------------------------- 2. the peers: one point per token
+  // ----2. the peers: one point per token
   const log10 = (x) => Math.log(x) / Math.LN10;
   const tanh = (v) => { const e = Math.exp(2 * v); return (e - 1) / (e + 1); };
   const days = (from, to) => Math.round((Date.parse(to) - Date.parse(from)) / 864e5);
@@ -73,7 +73,7 @@
       .map((f) => Object.assign(f, { x: features(f.tvl, f.change, f.listed, f.chains, asOf), y: log10(f.mcap) }));
   }
 
-  // ---------------------------------------------------------------- 3. the fit
+  // ----3. the fit
   /** What a designer would assume before seeing the peers, in log10 units per unit of the feature, with its width:
    *  growth +25% at the top, seasoning x1.43 from new to old, +4% a doubling of chains. The peers then move it. */
   const PRIORS = { g: [0.097, 0.1], s: [0.155, 0.15], c: [0.017, 0.02] };
@@ -120,7 +120,20 @@
     };
   }
 
-  // ---------------------------------------------------------------- 4. the implied value of one protocol
+  /** How firm each rank is: 200 refits on peers drawn again with replacement (seeded, so every run agrees), and the
+   *  5th to 95th percentile of the rank each row lands on. A wide range says the order there is not to be trusted. */
+  function rankRanges(peers, rows) {
+    let seed = 20261114;
+    const draw = () => peers[Math.floor((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296 * peers.length)];
+    const seen = rows.map(() => []);
+    for (let k = 0; k < 200; k++) {
+      const fit = fitOn(peers.map(draw)), v = rows.map((r) => fit.predict(r.x, r.peerCategory) + log10(r.haircut));
+      v.map((_, i) => i).sort((i, j) => v[j] - v[i]).forEach((i, at) => seen[i].push(at + 1));
+    }
+    rows.forEach((r, i) => { const s = seen[i].sort((a, b) => a - b); r.rankLo = s[10]; r.rankHi = s[189]; });
+  }
+
+  // ----4. the implied value of one protocol
   const AIRDROP_SHARE = 0.07;   // share of launch value assumed to reach farmers; the page lets the reader move it
   const KIN_HAIRCUT = 0.4;      // shares a name with a protocol whose token trades: the token may already exist
   const PARENT_HAIRCUT = 0.55;  // at or over the floor yet off the watchlist: only the parent rule can explain it
@@ -146,13 +159,13 @@
     return {
       slug: p.slug, name: p.name, category: p.category || 'Uncategorised', chains: p.chains, tvl: p.tvl_usd, change7d: p.change_7d,
       listed: p.listed_at, days: age, cls: onWatch ? 'watch' : overFloor ? 'offlist' : 'early',
-      curve: Math.round(curve), catN: cat.n, catMult, growth, tenure, breadth, haircut,
+      curve: Math.round(curve), catN: cat.n, catMult, growth, tenure, breadth, haircut, x, peerCategory: p.category,
       value, lo: Math.round(value * 10 ** test.q25), hi: Math.round(value * 10 ** test.q75), multiple: value / p.tvl_usd,
       perK: value * AIRDROP_SHARE * 1000 / p.tvl_usd, conf, grade: conf >= 75 ? 'A' : conf >= 58 ? 'B' : 'C', flags
     };
   }
 
-  // ---------------------------------------------------------------- 5. the farm plan
+  // ----5. the farm plan
   /** Typical cost of one transaction in USD, by chain. An assumption table about chains, not protocols. */
   const GAS_USD = { Ethereum: 4, Bitcoin: 2.5, Tron: 1.5, Binance: 0.15, Avalanche: 0.08, Solana: 0.01, Polygon: 0.02 };
   const gasOf = (chain) => GAS_USD[chain] != null ? GAS_USD[chain] : 0.05;
@@ -210,17 +223,19 @@
     return {
       archetype: A.key, chain, size, steps, gas: gasTotal, carry, cost, hours: minutes / 60, weeks: WEEKS,
       drop, low, net: drop - cost, edge: drop / cost, lowEdge: low / cost, verdict: verdictOf(drop / cost, low / cost),
+      breakEven: r.value * cost / drop, // the launch value at which the drop only just pays for the plan
       text: steps.map((x) => x.when + ': ' + x.what + '. Cost: ' + (x.cost > 0 ? 'about ' + usd(x.cost) + ' (' + x.note + ')' : 'nothing (' + x.note + ')') + '. Time: ' + (x.min >= 60 ? (x.min / 60).toFixed(1) + ' hours in all' : x.min + ' minutes') + '.')
     };
   }
 
-  // ---------------------------------------------------------------- 6. the whole radar
+  // ----6. the whole radar
   /** Rank every candidate by implied value; rank 1 is the largest. Ties break on TVL, then slug. */
   function buildRadar(snapshot) {
     const uni = splitUniverse(snapshot), peers = tokenFamilies(uni.trading, snapshot.as_of), fit = fitOn(peers), test = backtest(peers);
     const rows = uni.candidates.map((p) => scoreProtocol(p, fit, test, uni, snapshot));
     rows.sort((x, y) => y.value - x.value || y.tvl - x.tvl || (x.slug < y.slug ? -1 : 1));
     rows.forEach((r, i) => { r.rank = i + 1; r.plan = farmPlan(r); });
+    rankRanges(peers, rows);
     return { fit, test, rows, trading: uni.trading, aside: uni.aside, as_of: snapshot.as_of, source: snapshot.source, floor: snapshot.floor_usd, total: snapshot.protocols.length, watchlist: snapshot.watchlist };
   }
   /** board.json's rows, as the gate reads them. */
@@ -228,6 +243,7 @@
     const cents = (v) => Math.round(v * 100) / 100;
     return radar.rows.map((r) => ({
       slug: r.slug, name: r.name, rank: r.rank, implied_value_usd: r.value, farm_steps: r.plan.text, tvl_usd: r.tvl, class: r.cls, confidence: r.grade,
+      rank_range_90: [r.rankLo, r.rankHi], break_even_value_usd: Math.round(r.plan.breakEven),
       value_low_usd: r.lo, value_high_usd: r.hi, est_drop_per_1k_usd: cents(r.perK), plan_capital_usd: r.plan.size, plan_cost_usd: cents(r.plan.cost),
       plan_net_usd: cents(r.plan.net), plan_hours: Math.round(r.plan.hours * 10) / 10, verdict: r.plan.verdict
     }));

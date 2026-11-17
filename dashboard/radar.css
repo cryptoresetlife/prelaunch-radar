@@ -1,5 +1,5 @@
-/* Prelaunch Radar. Paper, ink and two signals: ultramarine for what the model says, vermilion for what
-   to watch. System fonts only; a 4px spacing step; figures set in tabular monospace. */
+/* Paper, ink and two signals: ultramarine for what the model says, vermilion for what to watch.
+   System fonts only, a 4px spacing step, figures in tabular monospace. */
 :root {
   --paper: #f5f2ea; --card: #fffdf7; --ink: #17191c; --soft: #5b6068; --faint: #8d9097; --rule: #dcd6c7; --wash: #ece7da;
   --blue: #2438a6; --blue-wash: #e3e7f8; --red: #c8421f; --red-wash: #f9e4dc; --green: #1d7a4f; --green-wash: #dff1e6; --gold: #8a6500; --gold-wash: #f6ecc9;
@@ -157,6 +157,7 @@ h3 .verdict { margin-left: 8px; font-size: 13px; letter-spacing: 0; text-transfo
 .tiles b { display: block; font: 600 20px/1.2 var(--mono); }
 .tiles span { font-size: 12px; color: var(--soft); line-height: 1.3; display: block; }
 .why { margin-top: 8px; font-weight: 600; }
+.be { margin-top: 4px; color: var(--soft); }
 .steps { list-style: none; counter-reset: s; margin: 12px 0 0; padding: 0; }
 .steps li { counter-increment: s; position: relative; display: grid; grid-template-columns: 1fr 64px 60px; column-gap: 8px; padding: 8px 0 8px 36px; border-top: 1px solid var(--rule); }
 .steps li::before { content: counter(s); position: absolute; left: 0; top: 8px; width: 24px; height: 24px; border-radius: 50%; background: var(--ink); color: var(--paper); font: 600 12px/24px var(--mono); text-align: center; }

@@ -1,14 +1,15 @@
 <!doctype html>
 <!--
   Prelaunch Radar. A map of this source for whoever reads it:
-  - model.js          the value model and the farm planner. main.ts runs it on the sealed snapshot to write
-                      board.json; this page runs the same file again in the browser. Functions: splitUniverse
-                      (trading / set aside / still to come), fitPeers (the peer curve), scoreProtocol (implied
-                      value, band, confidence), farmPlan (steps, each with a cost and a time), buildRadar.
-  - radar.js          the page: renderBoard (sort, search, filters), renderDetail (value walk, peer chart,
-                      comparables, farm plan), readHash / writeHash (every view is a link).
-  - snapshot-data.js  the snapshot's ten fields for all protocols, written by main.ts. No value is stored:
-                      the page derives every figure, then checks its total against board.json (the header chip).
+  - model.js          the value model, its test and the farm planner. main.ts runs it on the sealed snapshot to
+                      write board.json; this page runs the same file again in the browser. splitUniverse (trading
+                      / set aside / still to come), tokenFamilies (one peer per ticker), fitOn (size curve,
+                      category, growth, tenure, breadth), backtest (leave-one-out and a time split), rankRanges
+                      (200 bootstrap refits), scoreProtocol, farmPlan (dated steps with cost and time, netted).
+  - radar.js          the page: renderBoard (sort, search, filters, steps in the row), renderDetail (value walk,
+                      peer chart, comparables, farm plan), readHash / writeHash (every view is a link).
+  - snapshot-data.js  the snapshot's own rows, written by main.ts. No value is stored: the page derives every
+                      figure, then checks its total against board.json (the header chip).
   No protocol is named anywhere in the code. No network: no remote script, font or image.
 -->
 <html lang="en">
@@ -31,7 +32,7 @@
   <section class="modelbar" id="modelbar" aria-label="The value model"></section>
   <section class="controls" id="controls" aria-label="Filters"></section>
   <section class="tablewrap"><table id="board"><thead></thead><tbody></tbody></table><p class="empty" id="empty" hidden>No protocol matches these filters. <button type="button" data-act="reset">Clear filters</button></p></section>
-  <footer class="foot">Implied value is this model's estimate from one DefiLlama snapshot, not a price and not advice. A protocol here <em>records</em> no token; it may still have one its record does not carry. Nothing predicts whether or when a token is issued.</footer>
+  <footer class="foot">Implied value is this model's estimate from one DefiLlama snapshot, not a price and not advice. A protocol here <em>records</em> no token; it may still have one. Nothing predicts whether or when a token is issued.</footer>
 </main>
 <div class="scrim" id="scrim" hidden></div>
 <aside class="detail" id="detail" role="dialog" aria-modal="true" aria-labelledby="d-name" hidden></aside>
