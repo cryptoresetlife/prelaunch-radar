@@ -14,13 +14,16 @@ Everything comes from the snapshot's own ten fields. No protocol is named in the
 
 1. **Split the universe** (`splitUniverse`): a token on record means *trading*; a token-less wrapped, staked,
    bridged or exchange product is *set aside*; the rest are the candidates.
-2. **Fit the peer curve** (`fitPeers`): `log10(mcap) = a + b * log10(TVL)` over every trading protocol with
-   a market cap, by Theil-Sen, plus a shrunk median residual per category.
-3. **Score each candidate** (`scoreProtocol`): the curve at its TVL, times category, seven-day growth,
-   no-token tenure, chain breadth and a haircut when a traded relative is likely. The 50% band and a
-   confidence grade come with it.
-4. **Plan the farm** (`farmPlan`): steps with a cost and a time each, a whole cost, the modelled drop for
-   the suggested capital, and a verdict: Farm, Marginal or Skip.
+2. **Fit the size curve** (`tokenFamilies`, `fitOn`): `log10(mcap) = a + b * log10(TVL)` by Theil-Sen, one
+   point per traded ticker.
+3. **Test it blind** (`backtest`, `compareModels`): leave-one-out and walk-forward, against one flat multiple
+   of TVL and against the curve with category offsets, which are used only if they do not lose both tests.
+   `rankRanges` refits 200 bootstrap samples to show how firm each rank is.
+4. **Score each candidate** (`scoreProtocol`): the curve at its TVL, times small tilts for seven-day growth,
+   no-token tenure and chain breadth, and a haircut when a traded relative is likely. The band is the middle
+   half of the blind misses.
+5. **Plan the farm** (`farmPlan`): dated steps with a cost and a time each, a whole cost, the modelled drop
+   for the suggested capital, the break-even launch value, and a verdict: Farm, Marginal or Skip.
 
 `dashboard/model.js` is the single copy of that model. `main.ts` runs it to write `board.json`; the page
 runs it again in the browser on `snapshot-data.js` and shows whether the two agree.

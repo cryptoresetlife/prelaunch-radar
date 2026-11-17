@@ -34,27 +34,27 @@ h1 { font-size: 22px; letter-spacing: -0.02em; line-height: 1.1; }
 .chip.bad { background: var(--red-wash); color: var(--red); }
 main { padding: 16px 32px 32px; max-width: 1480px; margin: 0 auto; }
 
-/* ---- funnel */
-.funnel { display: flex; align-items: stretch; gap: 8px; }
-.stat { flex: 1; text-align: left; background: var(--card); border: 1px solid var(--rule); border-radius: 6px; padding: 8px 12px; }
-.stat.fixed { background: var(--ink); color: var(--paper); border-color: var(--ink); }
-.stat.fixed small { color: #b9b6ad; }
-button.stat:hover { border-color: var(--blue); }
-.stat b { display: block; font: 600 22px/1.15 var(--mono); letter-spacing: -0.02em; }
-.stat span { font-weight: 600; }
-.stat small { font-size: 11.5px; line-height: 1.3; }
-.stat span { display: block; line-height: 1.25; }
-.arrow { align-self: center; font-style: normal; color: var(--faint); font-size: 18px; }
-
-/* ---- model bar */
-.modelbar { display: flex; gap: 16px; margin-top: 12px; padding: 12px 16px; background: var(--blue-wash); border-left: 4px solid var(--blue); border-radius: 0 6px 6px 0; }
-.formula { flex: 1; }
-.lbl { display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--blue); }
-.formula code { display: block; font-size: 14.5px; font-weight: 600; margin: 2px 0 4px; }
-.share { width: 260px; display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: 8px; }
-.share .lbl, .share small { grid-column: 1 / -1; }
-.share input { accent-color: var(--blue); width: 100%; }
-.share output { font: 600 16px var(--mono); }
+/* ---- the split in one line, then three cards: the model, the curve, the test */
+.funnel { color: var(--soft); }
+.funnel b { color: var(--ink); font-family: var(--mono); }
+.modelbar { display: grid; grid-template-columns: 1.05fr 1fr 1.05fr; gap: 12px; margin-top: 12px; }
+.modelbar article { background: var(--card); border: 1px solid var(--rule); border-top: 3px solid var(--blue); border-radius: 6px; padding: 10px 14px; font-size: 13px; }
+.modelbar h3 { margin: 0 0 6px; color: var(--ink); }
+.modelbar h3 code { margin-left: 6px; padding: 1px 6px; border-radius: 3px; background: var(--blue-wash); color: var(--blue); font-size: 11px; letter-spacing: 0; text-transform: none; }
+.modelbar ol { margin: 0; padding-left: 18px; }
+.modelbar li { margin-bottom: 3px; }
+.modelbar li code { font-weight: 600; }
+.modelbar p { margin-top: 6px; color: var(--soft); font-size: 12px; line-height: 1.35; }
+.share { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-weight: 600; }
+.share input { flex: 1; accent-color: var(--blue); }
+.share output { font: 600 14px var(--mono); }
+.ladder th, .ladder td { padding: 4px 6px; border-bottom: 1px solid var(--rule); text-align: left; }
+.ladder th { font-size: 11px; color: var(--faint); text-transform: uppercase; }
+.ladder th.num { text-align: right; }
+.ladder small { color: var(--red); font-size: 11px; }
+.ladder .used td { background: var(--blue-wash); font-weight: 600; }
+.ladder .used small { color: var(--blue); }
+.scatter .mine { fill: var(--blue); opacity: 0.75; }
 
 /* ---- controls */
 .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 16px; }
@@ -69,7 +69,6 @@ button.stat:hover { border-color: var(--blue); }
 .controls input[type="search"], .controls select, .reset { height: 34px; padding: 0 10px; border: 1px solid var(--rule); border-radius: 6px; background: var(--card); }
 .controls input[type="search"] { width: 250px; }
 .controls select { max-width: 170px; }
-.reset { color: var(--soft); }
 .count { flex-basis: 100%; color: var(--soft); font-size: 13px; }
 .count b { color: var(--ink); }
 .filtered { margin-right: 8px; padding: 2px 8px; border-radius: 3px; background: var(--blue); color: var(--paper); font-weight: 600; }
@@ -81,7 +80,6 @@ table { width: 100%; border-collapse: collapse; }
 #board th button { width: 100%; border: 0; background: none; padding: 8px 12px; text-align: inherit; font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--soft); }
 #board th[aria-sort] button { color: var(--ink); }
 #board td { padding: 5px 12px; line-height: 1.3; border-bottom: 1px solid var(--rule); vertical-align: middle; }
-#board tbody tr:last-child td { border-bottom: 0; }
 #board tr[data-slug] { cursor: pointer; }
 #board tr[data-slug]:hover, #board tr.on { background: var(--blue-wash); }
 #board td b { font-size: 14.5px; }
@@ -165,9 +163,5 @@ h3 .verdict { margin-left: 8px; font-size: 13px; letter-spacing: 0; text-transfo
 .steps .cost, .steps .time { font: 600 13px var(--mono); text-align: right; }
 .steps .cost { color: var(--red); }
 .steps small { grid-column: 2 / 4; text-align: right; font-size: 11px; line-height: 1.25; }
-.flags { margin: 0; padding-left: 18px; }
-.flags li { margin-bottom: 2px; }
-.flags li::marker { color: var(--red); }
-.flags .none { color: var(--soft); }
 
 #board td small, .verdict, .net { white-space: nowrap; }

@@ -1,8 +1,6 @@
-/* Prelaunch Radar: the value model, its blind test and the farm planner.
- * ONE file, run twice: main.ts runs it on the sealed snapshot to write board.json, and the page runs it
- * again in the browser on the same rows (snapshot-data.js). Nothing here names a protocol: every figure
- * comes from the snapshot's ten fields. Reading order: splitUniverse -> tokenFamilies -> fitOn ->
- * backtest -> rankRanges -> scoreProtocol -> farmPlan -> buildRadar. */
+/* Prelaunch Radar: the value model, its blind tests and the farm planner. ONE file, run twice: by main.ts to
+ * write board.json, and by the page on the same rows. Nothing here names a protocol. Reading order: splitUniverse
+ * -> tokenFamilies -> fitOn -> backtest -> compareModels -> rankRanges -> scoreProtocol -> farmPlan -> buildRadar. */
 (function (root) {
   'use strict';
 
@@ -48,8 +46,26 @@
   const days = (from, to) => Math.round((Date.parse(to) - Date.parse(from)) / 864e5);
   function median(v) {
     if (!v.length) return 0;
-    const s = v.slice().sort((a, b) => a - b), m = s.length >> 1;
-    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+    const s = Float64Array.from(v), m = s.length >> 1, upper = select(s, m);
+    if (s.length % 2) return upper;
+    let lower = -Infinity;
+    for (let i = 0; i < m; i++) if (s[i] > lower) lower = s[i];
+    return (lower + upper) / 2;
+  }
+  /** Quickselect: the k-th smallest, everything smaller left of it. */
+  function select(a, k) {
+    let lo = 0, hi = a.length - 1;
+    while (lo < hi) {
+      const pivot = a[(lo + hi) >> 1];
+      let i = lo, j = hi;
+      while (i <= j) {
+        while (a[i] < pivot) i++;
+        while (a[j] > pivot) j--;
+        if (i <= j) { const t = a[i]; a[i] = a[j]; a[j] = t; i++; j--; }
+      }
+      if (k <= j) hi = j; else if (k >= i) lo = i; else break;
+    }
+    return a[k];
   }
   const quantile = (sorted, q) => sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))];
 
@@ -58,8 +74,7 @@
     return { t: log10(tvl), g: change7d == null ? null : tanh(change7d / 20), s: listed ? 1 - Math.exp(-Math.max(days(listed, asOf), 0) / 365) : null, c: Math.log2(Math.max(chains, 1)) };
   }
 
-  /** A token's market cap belongs to the token, not to each product that carries it: Aave V2 and V3 are one point.
-   *  So the trading protocols are grouped by ticker: TVL summed, market cap taken once, the largest member leading. */
+  /** A market cap belongs to the token, not to each product carrying it: group by ticker, sum TVL, count the cap once. */
   function tokenFamilies(trading, asOf) {
     const by = {};
     for (const p of trading) {
@@ -74,17 +89,18 @@
   }
 
   // ----3. the fit
-  /** What a designer would assume before seeing the peers, in log10 units per unit of the feature, with its width:
-   *  growth +25% at the top, seasoning x1.43 from new to old, +4% a doubling of chains. The peers then move it. */
+  /** Priors [slope, width] in log10 units: growth +25% at the top, seasoning x1.43 new to old, +4% a doubling of chains. */
   const PRIORS = { g: [0.097, 0.1], s: [0.155, 0.15], c: [0.017, 0.02] };
 
-  /** Size curve: log10(mcap) = a + b*log10(TVL), by Theil-Sen (median of pairwise slopes; no outlier can steer it).
-   *  Category: median residual, clamped to one sigma and shrunk by n/(n+3). Then each of growth, seasoning and
-   *  breadth gets a slope on what is left, blended with its prior by precision (a posterior, not a guess). */
-  function fitOn(peers) {
-    const slopes = [];
-    for (let i = 0; i < peers.length; i++) for (let j = i + 1; j < peers.length; j++) if (peers[i].x.t !== peers[j].x.t) slopes.push((peers[j].y - peers[i].y) / (peers[j].x.t - peers[i].x.t));
-    const b = median(slopes), a = median(peers.map((p) => p.y - b * p.x.t));
+  /** Size curve: log10(mcap) = a + b*log10(TVL), by Theil-Sen (median of pairwise slopes; no outlier steers it).
+   *  Category: median residual, clamped to one sigma, shrunk by n/(n+3). Growth, seasoning and breadth each get
+   *  a slope on what is left, blended with its prior by precision. `terms` says which parts predict() uses. */
+  function fitOn(peers, terms) {
+    const slopes = new Float64Array(peers.length * (peers.length - 1) / 2);
+    const X = Float64Array.from(peers, (p) => p.x.t), Y = Float64Array.from(peers, (p) => p.y);
+    let k = 0;
+    for (let i = 0; i < X.length; i++) for (let j = i + 1; j < X.length; j++) if (X[i] !== X[j]) slopes[k++] = (Y[j] - Y[i]) / (X[j] - X[i]);
+    const b = terms.flat ? 1 : median(slopes.subarray(0, k)), a = median(peers.map((p) => p.y - b * p.x.t)); // flat: one multiple of TVL, the baseline
     const res = peers.map((p) => p.y - a - b * p.x.t), sigma = 1.4826 * median(res.map(Math.abs));
     const groups = {}, offsets = {};
     peers.forEach((p, i) => (groups[p.category] = groups[p.category] || []).push(res[i]));
@@ -92,7 +108,7 @@
       const n = groups[c].length, raw = Math.max(-sigma, Math.min(sigma, median(groups[c])));
       offsets[c] = { n, raw, off: raw * n / (n + 3) };
     }
-    const left = peers.map((p, i) => res[i] - offsets[p.category].off), coef = {};
+    const left = peers.map((p, i) => res[i] - (terms.category ? offsets[p.category].off : 0)), coef = {};
     for (const k of Object.keys(PRIORS)) {
       const pts = peers.map((p, i) => [p.x[k], left[i]]).filter((q) => q[0] != null), n = pts.length;
       const mx = pts.reduce((s, q) => s + q[0], 0) / n, my = pts.reduce((s, q) => s + q[1], 0) / n;
@@ -101,33 +117,52 @@
       const [prior, tau] = PRIORS[k], w = 1 / (se * se), w0 = 1 / (tau * tau);
       coef[k] = { n, mean: mx, prior, fit, se, post: (prior * w0 + fit * w) / (w0 + w) };
     }
-    const part = (k, x) => x[k] == null ? 0 : coef[k].post * (x[k] - coef[k].mean);
-    const predict = (x, category) => a + b * x.t + (offsets[category] ? offsets[category].off : 0) + part('g', x) + part('s', x) + part('c', x);
-    return { a, b, sigma, offsets, coef, n: peers.length, peers, part, predict };
+    const part = (k, x) => !terms.tilts || x[k] == null ? 0 : coef[k].post * (x[k] - coef[k].mean);
+    const offset = (category) => terms.category && offsets[category] ? offsets[category].off : 0;
+    const predict = (x, category) => a + b * x.t + offset(category) + part('g', x) + part('s', x) + part('c', x);
+    return { a, b, sigma, offsets, coef, terms, n: peers.length, peers, part, offset, predict };
   }
 
-  /** The test: every family priced by a model that never saw it (leave-one-out), and the newer half priced by a
-   *  model fitted on the older half only. The rows' bands are the middle half of the leave-one-out misses. */
-  function backtest(peers) {
-    const errs = peers.map((p, i) => p.y - fitOn(peers.filter((_, j) => j !== i)).predict(p.x, p.category));
-    const sorted = errs.slice().sort((x, y) => x - y), abs = errs.map(Math.abs);
+  /** The test: every ticker priced by a fit that never saw it (leave-one-out), and the newer half priced by a fit
+   *  on the older half (walk-forward). The rows' bands are the middle half of the leave-one-out misses. */
+  function backtest(peers, terms) {
+    const blind = peers.map((p, i) => fitOn(peers.filter((_, j) => j !== i), terms).predict(p.x, p.category));
+    const errs = peers.map((p, i) => p.y - blind[i]), sorted = errs.slice().sort((x, y) => x - y), abs = errs.map(Math.abs);
     const dated = peers.filter((p) => p.listed).sort((p, q) => (p.listed < q.listed ? -1 : 1)), half = dated.length >> 1;
-    const old = fitOn(dated.slice(0, half)), fresh = dated.slice(half);
+    const old = fitOn(dated.slice(0, half), terms), fresh = dated.slice(half);
     return {
-      n: peers.length, errs, miss: 10 ** median(abs), q25: quantile(sorted, 0.25), q75: quantile(sorted, 0.75),
-      within3: abs.filter((e) => e <= log10(3)).length / abs.length,
+      n: peers.length, miss: 10 ** median(abs), q25: quantile(sorted, 0.25), q75: quantile(sorted, 0.75),
+      within3: abs.filter((e) => e <= log10(3)).length / abs.length, rankCorr: spearman(blind, peers.map((p) => p.y)),
       split: { train: half, test: fresh.length, cut: dated[half].listed, miss: 10 ** median(fresh.map((p) => Math.abs(p.y - old.predict(p.x, p.category)))) }
     };
   }
+  /** Spearman rank correlation: does the blind price put the tokens in the order the market does? */
+  function spearman(u, v) {
+    const ranks = (w) => { const r = []; w.map((_, i) => i).sort((i, j) => w[i] - w[j]).forEach((i, k) => { r[i] = k; }); return r; };
+    const a = ranks(u), b = ranks(v), n = u.length;
+    return 1 - 6 * a.reduce((s, x, i) => s + (x - b[i]) ** 2, 0) / (n * (n * n - 1));
+  }
 
-  /** How firm each rank is: 200 refits on peers drawn again with replacement (seeded, so every run agrees), and the
-   *  5th to 95th percentile of the rank each row lands on. A wide range says the order there is not to be trusted. */
-  function rankRanges(peers, rows) {
+  /** The ladder, each rung tested blind: one flat multiple of TVL, the size curve, the curve with category offsets
+   *  (used only if they do not lose BOTH tests), and the model used. Growth, tenure and breadth are in by design:
+   *  launched tokens can bound them, not price them, so they stay small and the last rung shows what they cost. */
+  function compareModels(peers) {
+    const rung = (name, terms) => Object.assign({ name, terms }, backtest(peers, terms));
+    const flat = rung('One flat multiple of TVL', { flat: true }), curve = rung('Size curve on log TVL', {});
+    const offsets = rung('Curve + category offsets', { category: true });
+    const category = !(offsets.miss > curve.miss && offsets.split.miss > curve.split.miss);
+    const used = rung('Curve + growth, tenure, breadth' + (category ? ', category' : ''), { category, tilts: true });
+    offsets.verdict = category ? 'kept' : 'dropped: loses both tests'; used.verdict = 'the model used';
+    return { rungs: [flat, curve, offsets, used], terms: used.terms, test: used };
+  }
+
+  /** How firm each rank is: 200 refits on peers redrawn with replacement (seeded), 5th to 95th percentile of the rank. */
+  function rankRanges(peers, rows, terms) {
     let seed = 20261114;
     const draw = () => peers[Math.floor((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296 * peers.length)];
     const seen = rows.map(() => []);
     for (let k = 0; k < 200; k++) {
-      const fit = fitOn(peers.map(draw)), v = rows.map((r) => fit.predict(r.x, r.peerCategory) + log10(r.haircut));
+      const fit = fitOn(peers.map(draw), terms), v = rows.map((r) => fit.predict(r.x, r.peerCategory) + log10(r.haircut));
       v.map((_, i) => i).sort((i, j) => v[j] - v[i]).forEach((i, at) => seen[i].push(at + 1));
     }
     rows.forEach((r, i) => { const s = seen[i].sort((a, b) => a - b); r.rankLo = s[10]; r.rankHi = s[189]; });
@@ -143,15 +178,11 @@
     const age = p.listed_at ? days(p.listed_at, snapshot.as_of) : null;
     const cat = fit.offsets[p.category] || { n: 0, off: 0 };
     const onWatch = uni.watch.has(p.slug), overFloor = p.tvl_usd >= snapshot.floor_usd;
-    const kin = uni.kin[firstWord(p.name)] || null, flags = [];
-    let haircut = 1;
-    if (kin) { haircut = KIN_HAIRCUT; flags.push('Shares a name with ' + kin.name + ' (' + (kin.symbol || kin.gecko_id) + ' trades): its token may already exist'); }
-    else if (overFloor && !onWatch) { haircut = PARENT_HAIRCUT; flags.push('Over the floor but off the watchlist: DefiLlama records a parent protocol, so the token may launch at the parent'); }
-    if (p.change_7d != null && p.change_7d <= -10) flags.push('TVL fell ' + (-p.change_7d).toFixed(1) + '% in 7 days: capital is leaving');
-    if (age != null && age < 90) flags.push('Tracked for only ' + age + ' days: contracts are young');
-    if (age == null) flags.push('No listing date on record: tenure unknown, so the seasoning step is neutral');
-    if (p.chains.length === 1) flags.push('Single chain (' + p.chains[0] + '): no fallback venue');
-    const curve = 10 ** (fit.a + fit.b * x.t), catMult = 10 ** cat.off;
+    const kin = uni.kin[firstWord(p.name)] || null;
+    let haircut = 1, why = 'none: no traded relative found';
+    if (kin) { haircut = KIN_HAIRCUT; why = 'shares a name with ' + kin.name + ' (' + (kin.symbol || kin.gecko_id) + ' trades): its token may already exist'; }
+    else if (overFloor && !onWatch) { haircut = PARENT_HAIRCUT; why = 'over the floor yet off the watchlist: a parent is on DefiLlama\'s record, so the token may launch there'; }
+    const curve = 10 ** (fit.a + fit.b * x.t), catMult = 10 ** fit.offset(p.category);
     const growth = 10 ** fit.part('g', x), tenure = 10 ** fit.part('s', x), breadth = 10 ** fit.part('c', x);
     const value = Math.max(1, Math.round(10 ** fit.predict(x, p.category) * haircut));
     // Confidence: 20 base, up to 40 for same-category peers, 10 each for a growth figure and a listing date, up to 20 for tenure.
@@ -161,7 +192,7 @@
       listed: p.listed_at, days: age, cls: onWatch ? 'watch' : overFloor ? 'offlist' : 'early',
       curve: Math.round(curve), catN: cat.n, catMult, growth, tenure, breadth, haircut, x, peerCategory: p.category,
       value, lo: Math.round(value * 10 ** test.q25), hi: Math.round(value * 10 ** test.q75), multiple: value / p.tvl_usd,
-      perK: value * AIRDROP_SHARE * 1000 / p.tvl_usd, conf, grade: conf >= 75 ? 'A' : conf >= 58 ? 'B' : 'C', flags
+      perK: value * AIRDROP_SHARE * 1000 / p.tvl_usd, conf, grade: conf >= 75 ? 'A' : conf >= 58 ? 'B' : 'C', why
     };
   }
 
@@ -231,12 +262,13 @@
   // ----6. the whole radar
   /** Rank every candidate by implied value; rank 1 is the largest. Ties break on TVL, then slug. */
   function buildRadar(snapshot) {
-    const uni = splitUniverse(snapshot), peers = tokenFamilies(uni.trading, snapshot.as_of), fit = fitOn(peers), test = backtest(peers);
+    const uni = splitUniverse(snapshot), peers = tokenFamilies(uni.trading, snapshot.as_of), ladder = compareModels(peers);
+    const fit = fitOn(peers, ladder.terms), test = ladder.test;
     const rows = uni.candidates.map((p) => scoreProtocol(p, fit, test, uni, snapshot));
     rows.sort((x, y) => y.value - x.value || y.tvl - x.tvl || (x.slug < y.slug ? -1 : 1));
     rows.forEach((r, i) => { r.rank = i + 1; r.plan = farmPlan(r); });
-    rankRanges(peers, rows);
-    return { fit, test, rows, trading: uni.trading, aside: uni.aside, as_of: snapshot.as_of, source: snapshot.source, floor: snapshot.floor_usd, total: snapshot.protocols.length, watchlist: snapshot.watchlist };
+    rankRanges(peers, rows, ladder.terms);
+    return { fit, test, ladder, rows, trading: uni.trading, aside: uni.aside, as_of: snapshot.as_of, source: snapshot.source, floor: snapshot.floor_usd, total: snapshot.protocols.length, watchlist: snapshot.watchlist };
   }
   /** board.json's rows, as the gate reads them. */
   function boardRows(radar) {
@@ -249,5 +281,5 @@
     }));
   }
 
-  root.RadarModel = { buildRadar, boardRows, splitUniverse, tokenFamilies, fitOn, backtest, scoreProtocol, farmPlan, archetypeOf, verdictOf, gasOf, suggestedSize, productReason, features, usd, median, PRIORS, AIRDROP_SHARE, GAS_USD, WEEKS };
+  root.RadarModel = { buildRadar, boardRows, splitUniverse, tokenFamilies, fitOn, backtest, compareModels, scoreProtocol, farmPlan, archetypeOf, verdictOf, gasOf, suggestedSize, productReason, features, usd, median, PRIORS, AIRDROP_SHARE, GAS_USD, WEEKS };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
