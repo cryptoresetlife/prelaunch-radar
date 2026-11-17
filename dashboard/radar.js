@@ -4,13 +4,13 @@
   'use strict';
   var M = window.RadarModel, D = window.RADAR_DATA;
   var $ = function (id) { return document.getElementById(id); };
-  if (!M || !D) { $('funnel').innerHTML = '<p class="empty">No data beside the page. Run <code>node main.ts</code>: it writes snapshot-data.js next to index.html.</p>'; return; }
+  if (!M || !D) { $('funnel').innerHTML = '<p class="empty">Run main.ts first: it writes snapshot-data.js beside this page.</p>'; return; }
 
   var radar = M.buildRadar(D), rows = radar.rows, usd = M.usd, T = radar.test;
   var peerKeys = {}; radar.fit.peers.forEach(function (f) { peerKeys[f.key] = f; });
   function fam(p) { return peerKeys[String(p.symbol || p.gecko_id).toUpperCase()]; }
   var bySlug = {}; rows.forEach(function (r) { bySlug[r.slug] = r; });
-  var DEFAULTS = { view: 'ranked', cls: '', q: '', cat: '', chain: '', verdict: '', grade: '', min: '', sort: 'rank', dir: 'asc', share: '7', p: '' };
+  var DEFAULTS = { view: 'ranked', cls: '', q: '', cat: '', chain: '', verdict: '', grade: '', min: '', sort: 'rank', dir: 'asc', share: '7', x: '', p: '' };
   var S = {}, shown = [];
 
   // ---------------------------------------------------------------- small helpers
@@ -52,11 +52,11 @@
       { k: 'tvl', t: 'TVL', num: 1, v: function (r) { return r.tvl; }, h: function (r) { return usd(r.tvl); } },
       { k: 'change7d', t: '7d TVL', num: 1, v: function (r) { return r.change7d; }, h: function (r) { return pct(r.change7d); } },
       { k: 'days', t: 'No token for', num: 1, v: function (r) { return r.days; }, h: function (r) { return tenure(r.days); } },
-      { k: 'value', t: 'Implied value', tip: 'What the launch would be worth: the peer curve at its TVL, times category, growth, tenure, breadth and haircut. The bar is the band the blind test earned, on a log scale.', v: function (r) { return r.value; }, h: function (r) { return '<b>' + usd(r.value) + '</b><span class="band"><i style="left:' + scale(r.lo).toFixed(1) + '%;width:' + (scale(r.hi) - scale(r.lo)).toFixed(1) + '%"></i><u style="left:' + scale(r.value).toFixed(1) + '%"></u></span><small>' + usd(r.lo) + ' to ' + usd(r.hi) + '</small>'; } },
+      { k: 'value', t: 'Implied value', tip: 'The fitted model at this protocol\'s figures. The bar is the band the blind test earned, log scale.',v: function (r) { return r.value; }, h: function (r) { return '<b>' + usd(r.value) + '</b><span class="band"><i style="left:' + scale(r.lo).toFixed(1) + '%;width:' + (scale(r.hi) - scale(r.lo)).toFixed(1) + '%"></i><u style="left:' + scale(r.value).toFixed(1) + '%"></u></span><small>' + usd(r.lo) + ' to ' + usd(r.hi) + '</small>'; } },
       { k: 'multiple', t: '× TVL', num: 1, v: function (r) { return r.multiple; }, h: function (r) { return times(r.multiple); } },
       { k: 'perK', t: 'Drop per $1k', num: 1, tip: 'Implied value × the airdrop share, split pro rata over TVL, for $1,000 deposited.', v: function (r) { return r.perK; }, h: function (r) { return usd(farm(r).perK); } },
-      { k: 'edge', t: 'Farm plan', tip: 'Modelled drop ÷ the plan\'s whole cost. Farm: 3× or more and still covered at the band\'s low end. Marginal: covered. Skip: not.', v: function (r) { return r.plan.edge; }, h: function (r) { var f = farm(r); return '<span class="verdict ' + f.verdict + '">' + f.verdict + ' ' + times(f.edge) + '</span> <span class="net">net ' + usd(f.net) + '</span><small>' + r.plan.steps.length + ' steps · ' + usd(r.plan.cost) + ' cost · ' + r.plan.hours.toFixed(1) + ' h · ' + esc(r.plan.chain) + '</small>'; } },
-      { k: 'conf', t: 'Conf.', tip: 'How much of the estimate rests on data: same-category peers, a growth figure, a listing date, tenure.', v: function (r) { return r.conf; }, h: function (r) { return '<span class="grade ' + r.grade + '">' + r.grade + '</span>'; } }
+      { k: 'edge', t: 'Farm plan', tip: 'Modelled drop ÷ the plan\'s whole cost. Farm: 3× or more and still covered at the band\'s low end. Marginal: covered. Skip: not.', v: function (r) { return r.plan.edge; }, h: function (r) { var f = farm(r); return '<span class="verdict ' + f.verdict + '">' + f.verdict + ' ' + times(f.edge) + '</span> <span class="net">net ' + usd(f.net) + '</span><small>' + r.plan.steps.length + ' steps · ' + usd(r.plan.cost) + ' · ' + r.plan.hours.toFixed(1) + ' h · <button type="button" class="more" data-x="' + esc(r.slug) + '">steps ▾</button></small>'; } },
+      { k: 'conf', t: 'Conf.', v: function (r) { return r.conf; }, h: function (r) { return '<span class="grade ' + r.grade + '">' + r.grade + '</span>'; } }
     ],
     trading: [
       { k: 'name', t: 'Protocol', v: function (p) { return p.name.toLowerCase(); }, h: function (p) { return '<b>' + esc(p.name) + '</b><span class="tag live">' + esc(p.symbol || p.gecko_id) + ' trades</span><small>' + esc(p.category || 'Uncategorised') + ' · ' + chainsShort(p.chains, 2) + '</small>'; } },
@@ -113,7 +113,7 @@
       cell('ranked', 'offlist', n('offlist'), 'off-list', 'over the floor, parent on record: haircut');
     var f = radar.fit, sign = function (v) { return (v < 0 ? ' − ' : ' + ') + Math.abs(v).toFixed(3); };
     $('modelbar').innerHTML = '<div class="formula"><span class="lbl">Value model · fitted on this snapshot, then tested blind</span><code>log10 value = ' + f.a.toFixed(2) + ' + ' + f.b.toFixed(3) + '·log10 TVL + category' + sign(f.coef.g.post) + '·growth' + sign(f.coef.s.post) + '·tenure' + sign(f.coef.c.post) + '·log2 chains + haircut</code>' +
-      '<small>Fitted on the ' + f.n + ' tokens that trade with a market cap, one point per ticker (fitOn). <b>Blind test</b> (backtest): each token priced by a fit that never saw it misses by ×' + T.miss.toFixed(1) + ' at the median; a fit on the ' + T.split.train + ' listed before ' + T.split.cut + ' prices the ' + T.split.test + ' listed after within ×' + T.split.miss.toFixed(1) + '. Each row\'s band is the middle half of those misses: ÷' + Math.pow(10, -T.q25).toFixed(1) + ' to ×' + Math.pow(10, T.q75).toFixed(1) + '. No list of names anywhere.</small></div>' +
+      '<small>Fitted on the ' + f.n + ' tokens that trade with a market cap, one point per ticker. <b>Blind test:</b> each token priced by a fit that never saw it misses by ×' + T.miss.toFixed(1) + ' at the median; a fit on the ' + T.split.train + ' listed before ' + T.split.cut + ' prices the ' + T.split.test + ' listed after within ×' + T.split.miss.toFixed(1) + '. Each row\'s band is the middle half of those misses: ÷' + Math.pow(10, -T.q25).toFixed(1) + ' to ×' + Math.pow(10, T.q75).toFixed(1) + '.</small></div>' +
       '<label class="share"><span class="lbl">Airdrop share of launch value</span><input type="range" id="share" min="2" max="15" step="1" value="' + esc(S.share) + '"><output>' + esc(S.share) + '%</output><small>Sets drop per $1k and the verdict. Rank does not move.</small></label>';
   }
 
@@ -148,8 +148,11 @@
       var on = c.k === S.sort || (!cols.some(function (x) { return x.k === S.sort; }) && c === cols[0]);
       return '<th' + (c.num ? ' class="num"' : '') + (on ? ' aria-sort="' + (S.dir === 'asc' ? 'ascending' : 'descending') + '"' : '') + '><button type="button" data-sort="' + c.k + '"' + (c.tip ? ' title="' + esc(c.tip) + '"' : '') + '>' + c.t + (on ? (S.dir === 'asc' ? ' ▲' : ' ▼') : '') + '</button></th>';
     }).join('') + '</tr>';
+    // One row at a time opens its farm steps in the table itself: the first row by default, any row by its "steps" button.
+    var open = S.view !== 'ranked' || S.x === 'none' ? null : S.x || (shown[0] && shown[0].slug);
     $('board').tBodies[0].innerHTML = shown.map(function (x) {
-      return '<tr' + (S.view === 'ranked' ? ' tabindex="0" data-slug="' + esc(x.slug) + '"' + (x.slug === S.p ? ' class="on"' : '') : '') + '>' + cols.map(function (c) { return '<td' + (c.num ? ' class="num"' : '') + '>' + c.h(x) + '</td>'; }).join('') + '</tr>';
+      return '<tr' + (S.view === 'ranked' ? ' tabindex="0" data-slug="' + esc(x.slug) + '"' + (x.slug === S.p ? ' class="on"' : '') : '') + '>' + cols.map(function (c) { return '<td' + (c.num ? ' class="num"' : '') + '>' + c.h(x) + '</td>'; }).join('') + '</tr>' +
+        (x.slug === open ? '<tr class="plan"><td></td><td colspan="' + (cols.length - 1) + '"><b>How to farm ' + esc(x.name) + ': ' + usd(x.plan.size) + ' on ' + esc(x.plan.chain) + ', ' + usd(x.plan.cost) + ' whole cost, ' + x.plan.hours.toFixed(1) + ' hours over ' + x.plan.weeks + ' weeks</b><ol>' + x.plan.steps.map(function (s) { return '<li><i>' + esc(s.when) + '</i> ' + esc(s.what) + ' <em>' + (s.cost > 0 ? usd(s.cost) : 'free') + ' · ' + s.min + ' min</em></li>'; }).join('') + '</ol></td></tr>' : '');
     }).join('');
     $('empty').hidden = shown.length > 0;
     var total = (S.view === 'ranked' ? rows : radar[S.view]).length, col = cols.filter(function (c) { return c.k === S.sort; })[0] || cols[0];
@@ -198,7 +201,7 @@
       '<nav><button type="button" data-step="-1"' + (at > 0 ? '' : ' disabled') + '>← Prev</button><button type="button" data-step="1"' + (at >= 0 && at < shown.length - 1 ? '' : ' disabled') + '>Next →</button><button type="button" class="close" data-act="close">Close ✕</button></nav></header>' +
       '<div class="cols"><section><h3>Implied value</h3><div class="hero"><b>' + usd(r.value) + '</b><span>blind-test band ' + usd(r.lo) + ' to ' + usd(r.hi) + ' · ' + times(r.multiple) + ' TVL · confidence <span class="grade ' + r.grade + '">' + r.grade + '</span> ' + r.conf + '/100</span></div>' +
       '<table class="walk"><thead><tr><th>Step</th><th>From the snapshot</th><th class="num">Factor</th><th></th><th class="num">Running</th></tr></thead><tbody>' + walk + '</tbody></table>' +
-      '<h3>Where it sits among the ' + radar.fit.n + ' traded peers</h3>' + drawScatter(r) + '<p class="legend"><i class="k me"></i>' + esc(r.name) + ' with its band <i class="k same"></i>' + esc(r.category) + ' peers <i class="k peer"></i>other peers <i class="k fit"></i>fitted curve</p>' +
+      '<h3>Where it sits among the ' + radar.fit.n + ' traded peers</h3>' + drawScatter(r) + '<p class="legend">Blue: ' + esc(r.name) + ' with its band · gold: ' + esc(r.category) + ' peers · grey: other peers · dashed: the fitted curve</p>' +
       '<h3>Nearest comparables that trade</h3><table class="comps"><thead><tr><th>Protocol</th><th>Category</th><th class="num">TVL</th><th class="num">Market cap</th><th class="num">Mcap ÷ TVL</th></tr></thead><tbody>' + comps + '</tbody></table></section>' +
       '<section><h3>Farm plan <span class="verdict ' + f.verdict + '">' + f.verdict + ' ' + times(f.edge) + '</span></h3>' +
       '<div class="tiles"><div><b>' + usd(pl.size) + '</b><span>capital, on ' + esc(pl.chain) + '</span></div><div><b>' + usd(pl.cost) + '</b><span>whole cost: ' + usd(pl.gas) + ' gas' + (pl.carry ? ' + ' + usd(pl.carry) + ' idle cash' : ', deposit keeps earning') + '</span></div><div><b>' + pl.hours.toFixed(1) + ' h</b><span>over ' + pl.weeks + ' weeks</span></div><div><b>' + usd(f.drop) + '</b><span>modelled drop at ' + esc(S.share) + '% share; ' + usd(f.low) + ' at the band\'s low end</span></div><div class="' + (f.net >= 0 ? 'gain' : 'loss') + '"><b>' + usd(f.net) + '</b><span>net of cost</span></div></div>' +
@@ -213,11 +216,12 @@
   // ---------------------------------------------------------------- wiring
   function render() { renderFrame(); renderControls(); renderBoard(); renderDetail(); }
   document.addEventListener('click', function (e) {
-    var t = e.target.closest('[data-sort],[data-view],[data-cls],[data-act],[data-step],tr[data-slug]');
+    var t = e.target.closest('[data-x],[data-sort],[data-view],[data-cls],[data-act],[data-step],tr[data-slug]');
     if (e.target.id === 'scrim') return set({ p: '' });
     if (!t) return;
     var d = t.dataset;
-    if (d.sort) set(S.sort === d.sort ? { dir: S.dir === 'asc' ? 'desc' : 'asc' } : { sort: d.sort, dir: d.sort === 'rank' || d.sort === 'name' || d.sort === 'why' ? 'asc' : 'desc' });
+    if (d.x) set({ x: t.closest('tr').nextElementSibling && t.closest('tr').nextElementSibling.className === 'plan' ? 'none' : d.x });
+    else if (d.sort) set(S.sort === d.sort ? { dir: S.dir === 'asc' ? 'desc' : 'asc' } : { sort: d.sort, dir: d.sort === 'rank' || d.sort === 'name' || d.sort === 'why' ? 'asc' : 'desc' });
     else if (d.view) set({ view: d.view, cls: d.cls, cat: '', chain: '', verdict: '', grade: '', sort: d.view === 'ranked' ? 'rank' : 'tvl', dir: d.view === 'ranked' ? 'asc' : 'desc', p: '' });
     else if (d.cls != null) set({ cls: d.cls });
     else if (d.act === 'reset') { location.hash = ''; readHash(); render(); }
@@ -234,7 +238,6 @@
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && S.p) set({ p: '' });
     else if (e.key === 'Enter' && e.target.dataset && e.target.dataset.slug) set({ p: e.target.dataset.slug });
-    else if (S.p && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) { var n = shown[shown.indexOf(bySlug[S.p]) + (e.key === 'ArrowLeft' ? -1 : 1)]; if (n) set({ p: n.slug }); }
   });
   window.addEventListener('hashchange', function () { readHash(); render(); });
   readHash(); render();

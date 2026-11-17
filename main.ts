@@ -98,8 +98,8 @@ const dataJs =
   '// derived and nothing ranked. model.js (buildRadar) turns them into the board in the browser; board_check is\n' +
   '// what board.json holds, and the page shows whether its own run matches. One protocol a line.\n' +
   `window.RADAR_DATA = ${JSON.stringify(head)};\n` +
-  `window.RADAR_DATA.watchlist = ${JSON.stringify(snapshot.watchlist)};\n` +
-  'window.RADAR_DATA.protocols = [\n' + snapshot.protocols.map((r) => JSON.stringify(r)).join(',\n') + '\n];\n';
+  'window.RADAR_DATA.protocols = [\n' + snapshot.protocols.map((r) => JSON.stringify(r)).join(',\n') + '\n];\n' +
+  `window.RADAR_DATA.watchlist = ${JSON.stringify(snapshot.watchlist)};\n`;
 
 mkdirSync(out, { recursive: true });
 writeFileSync(join(out, 'board.json'), `${JSON.stringify({ model: 'prelaunch-radar/1', as_of: snapshot.as_of, fit: { intercept: radar.fit.a, slope: radar.fit.b, sigma: radar.fit.sigma, token_families: radar.fit.n, coefficients: radar.fit.coef }, blind_test: { leave_one_out_median_miss_x: radar.test.miss, band_log10: [radar.test.q25, radar.test.q75], within_3x: radar.test.within3, time_split: radar.test.split }, rows })}\n`);
