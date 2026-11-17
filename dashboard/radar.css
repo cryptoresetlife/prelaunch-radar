@@ -86,7 +86,7 @@ table { width: 100%; border-collapse: collapse; }
 .tag { display: inline-block; margin-left: 8px; padding: 0 6px; border-radius: 3px; font: 600 11px/18px var(--sans); letter-spacing: 0.03em; text-transform: uppercase; vertical-align: 1px; }
 .tag.watch { background: var(--ink); color: var(--paper); }
 .tag.early { background: var(--red-wash); color: var(--red); }
-.tag.offlist { background: var(--wash); color: var(--soft); }
+.tag.above { background: var(--wash); color: var(--soft); }
 .tag.live { background: var(--green-wash); color: var(--green); text-transform: none; }
 .band { position: relative; display: block; height: 6px; width: 190px; margin: 3px 0 2px; background: var(--wash); border-radius: 3px; }
 .band i { position: absolute; top: 0; height: 6px; background: #aab4e6; border-radius: 3px; }

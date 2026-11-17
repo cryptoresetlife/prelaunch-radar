@@ -33,7 +33,7 @@
         const w = firstWord(p.name);
         if (!GENERIC.test(w) && !kin[w]) kin[w] = p;
       } else {
-        const why = watch.has(p.slug) ? null : productReason(p);
+        const why = watch.has(p.slug) ? null : productReason(p); // a watchlist protocol is never set aside: all are ranked
         if (why) aside.push({ p, why }); else candidates.push(p);
       }
     }
@@ -132,15 +132,9 @@
     const old = fitOn(dated.slice(0, half), terms), fresh = dated.slice(half);
     return {
       n: peers.length, miss: 10 ** median(abs), q25: quantile(sorted, 0.25), q75: quantile(sorted, 0.75),
-      within3: abs.filter((e) => e <= log10(3)).length / abs.length, rankCorr: spearman(blind, peers.map((p) => p.y)),
+      within3: abs.filter((e) => e <= log10(3)).length / abs.length,
       split: { train: half, test: fresh.length, cut: dated[half].listed, miss: 10 ** median(fresh.map((p) => Math.abs(p.y - old.predict(p.x, p.category)))) }
     };
-  }
-  /** Spearman rank correlation: does the blind price put the tokens in the order the market does? */
-  function spearman(u, v) {
-    const ranks = (w) => { const r = []; w.map((_, i) => i).sort((i, j) => w[i] - w[j]).forEach((i, k) => { r[i] = k; }); return r; };
-    const a = ranks(u), b = ranks(v), n = u.length;
-    return 1 - 6 * a.reduce((s, x, i) => s + (x - b[i]) ** 2, 0) / (n * (n * n - 1));
   }
 
   /** The ladder, each rung tested blind: one flat multiple of TVL, the size curve, the curve with category offsets
@@ -171,7 +165,7 @@
   // ----4. the implied value of one protocol
   const AIRDROP_SHARE = 0.07;   // share of launch value assumed to reach farmers; the page lets the reader move it
   const KIN_HAIRCUT = 0.4;      // shares a name with a protocol whose token trades: the token may already exist
-  const PARENT_HAIRCUT = 0.55;  // at or over the floor yet off the watchlist: only the parent rule can explain it
+  const PARENT_HAIRCUT = 0.55;  // above the floor but not one of the watchlist's 40: only the parent rule explains that
 
   function scoreProtocol(p, fit, test, uni, snapshot) {
     const x = features(p.tvl_usd, p.change_7d, p.listed_at, p.chains.length, snapshot.as_of);
@@ -181,7 +175,7 @@
     const kin = uni.kin[firstWord(p.name)] || null;
     let haircut = 1, why = 'none: no traded relative found';
     if (kin) { haircut = KIN_HAIRCUT; why = 'shares a name with ' + kin.name + ' (' + (kin.symbol || kin.gecko_id) + ' trades): its token may already exist'; }
-    else if (overFloor && !onWatch) { haircut = PARENT_HAIRCUT; why = 'over the floor yet off the watchlist: a parent is on DefiLlama\'s record, so the token may launch there'; }
+    else if (overFloor && !onWatch) { haircut = PARENT_HAIRCUT; why = 'above the floor but not a watchlist protocol: a parent is on DefiLlama\'s record, so the token may launch there'; }
     const curve = 10 ** (fit.a + fit.b * x.t), catMult = 10 ** fit.offset(p.category);
     const growth = 10 ** fit.part('g', x), tenure = 10 ** fit.part('s', x), breadth = 10 ** fit.part('c', x);
     const value = Math.max(1, Math.round(10 ** fit.predict(x, p.category) * haircut));
@@ -189,7 +183,7 @@
     const conf = Math.round(20 + 40 * cat.n / (cat.n + 4) + (x.g == null ? 0 : 10) + (x.s == null ? 0 : 10 + 20 * x.s) - (haircut < 1 ? 15 : 0));
     return {
       slug: p.slug, name: p.name, category: p.category || 'Uncategorised', chains: p.chains, tvl: p.tvl_usd, change7d: p.change_7d,
-      listed: p.listed_at, days: age, cls: onWatch ? 'watch' : overFloor ? 'offlist' : 'early',
+      listed: p.listed_at, days: age, cls: onWatch ? 'watch' : overFloor ? 'above' : 'early',
       curve: Math.round(curve), catN: cat.n, catMult, growth, tenure, breadth, haircut, x, peerCategory: p.category,
       value, lo: Math.round(value * 10 ** test.q25), hi: Math.round(value * 10 ** test.q75), multiple: value / p.tvl_usd,
       perK: value * AIRDROP_SHARE * 1000 / p.tvl_usd, conf, grade: conf >= 75 ? 'A' : conf >= 58 ? 'B' : 'C', why

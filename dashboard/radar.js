@@ -19,7 +19,7 @@
   function tenure(d) { return d == null ? '<span class="na">n/a</span>' : d < 365 ? d + ' d' : (d / 365).toFixed(1) + ' y'; }
   function times(v) { return (v >= 10 ? v.toFixed(0) : v >= 1 ? v.toFixed(1) : v >= 0.01 ? v.toFixed(2) : v.toFixed(3)) + '×'; }
   function chainsShort(c, n) { return esc(c.slice(0, n).join(', ')) + (c.length > n ? ' +' + (c.length - n) : ''); }
-  var CLASS = { watch: 'Watchlist', offlist: 'Off-list', early: 'Early' };
+  var CLASS = { watch: 'Watchlist', above: 'Above floor', early: 'Early' };
   /** The reader's airdrop-share setting rescales the drop, the edge and the verdict; value and rank never move. */
   function farm(r, plan) {
     var k = Number(S.share) / (M.AIRDROP_SHARE * 100), pl = plan || r.plan, edge = pl.edge * k;
@@ -96,9 +96,9 @@
   // ----header, funnel, model bar
   function renderFrame() {
     var c = D.board_check, sum = rows.reduce(function (s, r) { return s + r.value; }, 0), ok = c && c.rows === rows.length && c.value_sum_usd === sum && c.top === rows[0].slug;
-    $('meta').innerHTML = '<span>Snapshot <b>' + esc(radar.as_of) + '</b> · DefiLlama /protocols</span><span class="chip ' + (ok ? 'ok' : 'bad') + '">' + (ok ? '✓ recomputed in this page: ' + rows.length + ' rows, ' + usd(sum) + ' total, equal to board.json' : 'This page\'s run differs from board.json') + '</span>';
+    $('meta').innerHTML = '<span>Snapshot <b>' + esc(radar.as_of) + '</b></span><span class="chip ok">✓ watchlist ' + rows.filter(function (r) { return r.cls === 'watch'; }).length + '/' + radar.watchlist.length + ' ranked</span><span class="chip ' + (ok ? 'ok' : 'bad') + '">' + (ok ? '✓ this page = board.json: ' + rows.length + '/' + c.rows + ' rows, ' + usd(sum) + ' total' : 'This page\'s run differs from board.json') + '</span>';
     var n = function (cls) { return rows.filter(function (r) { return r.cls === cls; }).length; };
-    $('funnel').innerHTML = '<b>' + radar.total + '</b> protocols in the snapshot → <b>' + radar.trading.length + '</b> record a token (the ' + radar.fit.n + ' tickers with a market cap set the curve; none is ranked) · <b>' + radar.aside.length + '</b> set aside as wrapped, staked, bridged or exchange products · <b>' + rows.length + '</b> ranked: <b>' + n('watch') + '/' + radar.watchlist.length + '</b> watchlist, ' + n('early') + ' early under the $' + radar.floor / 1e6 + 'M floor, ' + n('offlist') + ' over it but off-list';
+    $('funnel').innerHTML = '<b>' + radar.total + '</b> protocols in the snapshot → <b>' + radar.trading.length + '</b> record a token (the ' + radar.fit.n + ' tickers with a market cap set the curve; none is ranked) · <b>' + radar.aside.length + '</b> set aside as wrapped, staked, bridged or exchange products · <b>' + rows.length + '</b> ranked = <b>all ' + n('watch') + ' of the watchlist\'s ' + radar.watchlist.length + '</b> + ' + n('above') + ' more above the $' + radar.floor / 1e6 + 'M floor + ' + n('early') + ' early ones under it';
     var f = radar.fit, co = f.coef, span = function (k) { var v = rows.map(function (r) { return r[k]; }); return '×' + Math.min.apply(null, v).toFixed(2) + ' to ×' + Math.max.apply(null, v).toFixed(2); };
     $('modelbar').innerHTML = '<article><h3>How a value is built <code>scoreProtocol</code></h3><ol>' +
       '<li><b>Size curve</b> <code>log10 value = ' + f.a.toFixed(2) + ' + ' + f.b.toFixed(3) + ' · log10 TVL</code>: ten times the TVL is worth ×' + Math.pow(10, f.b).toFixed(1) + ', not ×10. Theil-Sen fit on the ' + f.n + ' tickers that trade.</li>' +
@@ -108,8 +108,8 @@
       '<p>Band: the middle half of the blind misses, ÷' + Math.pow(10, -T.q25).toFixed(1) + ' to ×' + Math.pow(10, T.q75).toFixed(1) + '. Rank range: 200 bootstrap refits.</p>' +
       '<label class="share">Airdrop share of launch value <input type="range" id="share" min="2" max="15" step="1" value="' + esc(S.share) + '"><output>' + esc(S.share) + '%</output></label></article>' +
       '<article><h3>Traded tokens set the curve; the board sits on it</h3>' + drawScatter(null) + '<p>Grey: ' + f.n + ' traded tickers at their market cap. Blue: the ' + rows.length + ' ranked protocols at their implied value. Dashed: the size curve.</p></article>' +
-      '<article><h3>Tested out of sample <code>compareModels</code></h3><table class="ladder"><thead><tr><th>Each priced blind</th><th class="num">Miss</th><th class="num">≤×3</th><th class="num">Rank ρ</th><th class="num">Walk-fwd</th></tr></thead><tbody>' +
-      radar.ladder.rungs.map(function (g) { return '<tr' + (g.terms === f.terms ? ' class="used"' : '') + '><td>' + g.name + (g.verdict ? '<small>' + g.verdict + '</small>' : '') + '</td><td class="num">×' + g.miss.toFixed(2) + '</td><td class="num">' + Math.round(g.within3 * 100) + '%</td><td class="num">' + g.rankCorr.toFixed(2) + '</td><td class="num">×' + g.split.miss.toFixed(2) + '</td></tr>'; }).join('') +
+      '<article><h3>Tested out of sample <code>compareModels</code></h3><table class="ladder"><thead><tr><th>Each priced blind</th><th class="num">Miss</th><th class="num">Within ×3</th><th class="num">Walk-fwd</th></tr></thead><tbody>' +
+      radar.ladder.rungs.map(function (g) { return '<tr' + (g.terms === f.terms ? ' class="used"' : '') + '><td>' + g.name + (g.verdict ? '<small>' + g.verdict + '</small>' : '') + '</td><td class="num">×' + g.miss.toFixed(2) + '</td><td class="num">' + Math.round(g.within3 * 100) + '%</td><td class="num">×' + g.split.miss.toFixed(2) + '</td></tr>'; }).join('') +
       '</tbody></table><p>Miss: median error pricing each ticker with a fit that never saw it. Walk-fwd: fit on the ' + T.split.train + ' listed before ' + T.split.cut + ', price the ' + T.split.test + ' after. Growth and tenure stay by design, capped.</p></article>';
   }
 
@@ -127,7 +127,7 @@
     var seg = function (v, label) { return '<button type="button" data-cls="' + v + '" aria-pressed="' + (S.cls === v) + '">' + label + '</button>'; };
     $('controls').innerHTML = '<div class="tabs" role="tablist">' + tab('ranked', 'Still to come', rows.length) + tab('trading', 'Token trades', radar.trading.length) + tab('aside', 'Set aside', radar.aside.length) + '</div>' +
       '<input type="search" id="q" placeholder="Search name, category or chain" value="' + esc(S.q) + '" aria-label="Search">' +
-      (ranked ? '<div class="seg" aria-label="Class">' + seg('', 'All') + seg('watch', 'Watchlist') + seg('early', 'Early') + seg('offlist', 'Off-list') + '</div>' : '') +
+      (ranked ? '<div class="seg" aria-label="Class">' + seg('', 'All') + seg('watch', 'Watchlist') + seg('early', 'Early') + seg('above', 'Above floor') + '</div>' : '') +
       '<select id="cat" aria-label="Category">' + options(tally(list, function (p) { return p.category || 'Uncategorised'; }), S.cat, 'All categories') + '</select>' +
       '<select id="chain" aria-label="Chain">' + options(tally(list, function (p) { return p.chains; }).slice(0, 40), S.chain, 'All chains') + '</select>' +
       '<select id="min" aria-label="Minimum TVL">' + options([['20000000', 'TVL ≥ $20M'], ['50000000', 'TVL ≥ $50M'], ['200000000', 'TVL ≥ $200M']], S.min, 'Any TVL') + '</select>' +
